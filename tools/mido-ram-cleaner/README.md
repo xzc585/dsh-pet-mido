@@ -4,15 +4,25 @@
 
 程序带中文设置窗口，配置保存在 `%APPDATA%\mido-ram-cleaner\config.json`。
 
+仓库的 `dist/mido-ram-cleaner.exe` 是带米豆图标的 64 位发布版，可以直接下载使用。图标源文件是本目录的 `icon.ico`（透明多尺寸：16/32/48/64/128/256），托盘图标与文件图标使用同一套。
+
 ## 构建
 
 在仓库中的本目录下交叉编译（在 Linux / macOS / Windows 都可以）：
 
 ```sh
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/mido-ram-cleaner.exe .
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o dist/mido-ram-cleaner.exe .
 ```
 
-不需要 MinGW，也不需要 CGO。产物是单个 `mido-ram-cleaner.exe`。
+不需要 MinGW，也不需要 CGO。产物是单个 `mido-ram-cleaner.exe`。已提交的 `rsrc_windows_amd64.syso` 会在链接时写入 Windows 应用图标；若要重做图标资源：
+
+```sh
+python3 make_icon.py
+go-winres simply --arch amd64 --manifest gui --icon icon.ico \
+  --product-name "米豆系统内存清理" \
+  --file-description "米豆系统内存清理" \
+  --original-filename mido-ram-cleaner.exe
+```
 
 ## 使用
 

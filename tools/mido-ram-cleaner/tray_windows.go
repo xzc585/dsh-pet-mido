@@ -12,30 +12,30 @@ import (
 )
 
 const (
-	wmApp          = 0x8000
-	wmTray         = wmApp + 1
-	wmCommand      = 0x0111
-	wmDestroy      = 0x0002
-	wmRButtonUp    = 0x0205
-	wmLButtonUp    = 0x0202
+	wmApp           = 0x8000
+	wmTray          = wmApp + 1
+	wmCommand       = 0x0111
+	wmDestroy       = 0x0002
+	wmRButtonUp     = 0x0205
+	wmLButtonUp     = 0x0202
 	wmLButtonDblClk = 0x0203
 
-	nimAdd    = 0x00000000
-	nimDelete = 0x00000002
+	nimAdd     = 0x00000000
+	nimDelete  = 0x00000002
 	nifMessage = 0x00000001
 	nifIcon    = 0x00000002
 	nifTip     = 0x00000004
 
-	tpmLeftAlign  = 0x0000
+	tpmLeftAlign   = 0x0000
 	tpmRightButton = 0x0002
-	mfString      = 0x0000
-	mfSeparator   = 0x0800
+	mfString       = 0x0000
+	mfSeparator    = 0x0800
 
 	idOpen  = 1001
 	idClean = 1002
 	idExit  = 1003
 
-	imageIcon     = 1
+	imageIcon      = 1
 	lrLoadFromFile = 0x0010
 	lrDefaultSize  = 0x0040
 )
@@ -81,25 +81,25 @@ var (
 	shell32  = windows.NewLazySystemDLL("shell32.dll")
 	kernel32 = windows.NewLazySystemDLL("kernel32.dll")
 
-	procRegisterClassExW     = user32.NewProc("RegisterClassExW")
-	procCreateWindowExW      = user32.NewProc("CreateWindowExW")
-	procDefWindowProcW       = user32.NewProc("DefWindowProcW")
-	procGetMessageW          = user32.NewProc("GetMessageW")
-	procTranslateMessage     = user32.NewProc("TranslateMessage")
-	procDispatchMessageW     = user32.NewProc("DispatchMessageW")
-	procPostQuitMessage      = user32.NewProc("PostQuitMessage")
-	procDestroyWindow        = user32.NewProc("DestroyWindow")
-	procCreatePopupMenu      = user32.NewProc("CreatePopupMenu")
-	procAppendMenuW          = user32.NewProc("AppendMenuW")
-	procTrackPopupMenu       = user32.NewProc("TrackPopupMenu")
-	procDestroyMenu          = user32.NewProc("DestroyMenu")
-	procGetCursorPos         = user32.NewProc("GetCursorPos")
-	procSetForegroundWindow  = user32.NewProc("SetForegroundWindow")
-	procLoadImageW           = user32.NewProc("LoadImageW")
-	procDestroyIcon          = user32.NewProc("DestroyIcon")
-	procLoadIconW            = user32.NewProc("LoadIconW")
-	procShellNotifyIconW     = shell32.NewProc("Shell_NotifyIconW")
-	procGetModuleHandleW     = kernel32.NewProc("GetModuleHandleW")
+	procRegisterClassExW    = user32.NewProc("RegisterClassExW")
+	procCreateWindowExW     = user32.NewProc("CreateWindowExW")
+	procDefWindowProcW      = user32.NewProc("DefWindowProcW")
+	procGetMessageW         = user32.NewProc("GetMessageW")
+	procTranslateMessage    = user32.NewProc("TranslateMessage")
+	procDispatchMessageW    = user32.NewProc("DispatchMessageW")
+	procPostQuitMessage     = user32.NewProc("PostQuitMessage")
+	procDestroyWindow       = user32.NewProc("DestroyWindow")
+	procCreatePopupMenu     = user32.NewProc("CreatePopupMenu")
+	procAppendMenuW         = user32.NewProc("AppendMenuW")
+	procTrackPopupMenu      = user32.NewProc("TrackPopupMenu")
+	procDestroyMenu         = user32.NewProc("DestroyMenu")
+	procGetCursorPos        = user32.NewProc("GetCursorPos")
+	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
+	procLoadImageW          = user32.NewProc("LoadImageW")
+	procDestroyIcon         = user32.NewProc("DestroyIcon")
+	procLoadIconW           = user32.NewProc("LoadIconW")
+	procShellNotifyIconW    = shell32.NewProc("Shell_NotifyIconW")
+	procGetModuleHandleW    = kernel32.NewProc("GetModuleHandleW")
 )
 
 var (
@@ -116,13 +116,37 @@ func getModuleHandle() windows.Handle {
 }
 
 func loadTrayIcon() windows.Handle {
+	if h := loadIconFromResource(); h != 0 {
+		return h
+	}
+	return loadIconFromEmbeddedFile()
+}
+
+func loadIconFromResource() windows.Handle {
+	mod := getModuleHandle()
+	// go-winres assigns the application icon group ID 1 (and sometimes 2/3).
+	for _, id := range []uintptr{1, 2, 3} {
+		h, _, _ := procLoadImageW.Call(uintptr(mod), id, imageIcon, 0, 0, lrDefaultSize)
+		if h != 0 {
+			return windows.Handle(h)
+		}
+		h, _, _ = procLoadIconW.Call(uintptr(mod), id)
+		if h != 0 {
+			return windows.Handle(h)
+		}
+	}
+	return 0
+}
+
+func loadIconFromEmbeddedFile() windows.Handle {
 	dir, err := appDir()
 	if err != nil {
 		return loadDefaultIcon()
 	}
 	path := filepath.Join(dir, "icon.ico")
-	if _, err := os.Stat(path); err != nil {
-		if writeErr := os.WriteFile(path, iconICO, 0o644); writeErr != nil {
+	// Always refresh the sidecar so upgrades pick up a new Midou icon.
+	if writeErr := os.WriteFile(path, iconICO, 0o644); writeErr != nil {
+		if _, statErr := os.Stat(path); statErr != nil {
 			return loadDefaultIcon()
 		}
 	}

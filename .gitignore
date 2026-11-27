@@ -52,6 +52,8 @@ dsh-pet/dist-app/
 Thumbs.db
 desktop.ini
 
-# ── 系统内存清理工具（Windows 交叉编译产物，源码入库、二进制按需再编）──
+# ── 系统内存清理工具（默认忽略交叉编译产物；发布用 exe 单独跟踪）──
 tools/mido-ram-cleaner/dist/
 *.exe
+!tools/mido-ram-cleaner/dist/
+!tools/mido-ram-cleaner/dist/mido-ram-cleaner.exe
