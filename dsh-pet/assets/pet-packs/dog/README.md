@@ -9,15 +9,17 @@
 - 配置：`dog-config.json`
 - 动画目录：`dog-animation/`（透明 VP9 `.webm`，按文件名与配置中的动画名对应）
 - 立绘：`dog-character.png`
+- 表情包：`dog-memes/`（PNG，文件名对应配置 `memes` 的键；该目录存在时本种类只查这里）
 - 预览：`preview.gif`
 
-安装后，首次启动宿主会把本目录复制到 `$DSH_HOME/dsh-pet/pet/`（已有 `dog-config.json` 时不覆盖）。也可手工复制：
+安装后，首次启动宿主会把配置、动画、立绘和（若有）`dog-memes/` 复制到 `$DSH_HOME/dsh-pet/pet/`（已有 `dog-config.json` 时不覆盖配置）。若已有配置但还没有 `dog-memes/`，仍会补拷表情包目录；若已有配置缺少 `memes` 字段而包内配置有，则只把该字段合并进去，其它用户字段不动。也可手工复制：
 
 ```bash
 mkdir -p "$DSH_HOME/dsh-pet/pet"
 cp dog-config.json "$DSH_HOME/dsh-pet/pet/"
 cp dog-character.png "$DSH_HOME/dsh-pet/pet/"
 cp -R dog-animation "$DSH_HOME/dsh-pet/pet/"
+cp -R dog-memes "$DSH_HOME/dsh-pet/pet/"
 ```
 
 重新生成动画（需 Python 3、Pillow、numpy、ffmpeg，且 ffmpeg 带 libvpx-vp9）。姿势底板放在 `dsh-pet/scripts/dog-source/`（`mido-reference.png` 与各姿势底板）：

@@ -153,5 +153,5 @@ $DSH_HOME/dsh-pet/
 
 ## 本衍生版附带的种类：米豆
 
-包内 `dsh-pet/assets/pet-packs/dog/` 是原创毛茸茸三维奶油色小狗「米豆」种类（浅金耳朵、圆眼，不是平涂简笔卡通或像素侧视狗）。首次启动宿主会把它复制到 `$DSH_HOME/dsh-pet/pet/dog-config.json` 与 `pet/dog-animation/`（已有配置不覆盖）。种类与默认条目严格隔离：素材只查自己的 `-animation/` 目录。手工安装步骤见该目录下的 README。
+包内 `dsh-pet/assets/pet-packs/dog/` 是原创毛茸茸三维奶油色小狗「米豆」种类（浅金耳朵、圆眼，不是平涂简笔卡通或像素侧视狗）。首次启动宿主会把它复制到 `$DSH_HOME/dsh-pet/pet/dog-config.json`、`pet/dog-animation/` 与（若包内有）`pet/dog-memes/`（已有配置不覆盖）。若用户目录里已有配置但还没有 `dog-memes/`，仍会补拷表情包目录；若已有配置缺少 `memes` 字段而包内配置有，则只把该字段合并进去，其它用户字段不动。种类与默认条目严格隔离：动画只查自己的 `-animation/` 目录；若 `pet/dog-memes/` 存在，配图也只查该目录。手工安装步骤见该目录下的 README。
 
