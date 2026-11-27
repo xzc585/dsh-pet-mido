@@ -361,7 +361,7 @@ func relaunchElevated(args string) error {
 	verb, _ := windows.UTF16PtrFromString("runas")
 	file, _ := windows.UTF16PtrFromString(exe)
 	param, _ := windows.UTF16PtrFromString(args)
-	err = windows.ShellExecute(0, verb, file, param, nil, windows.SW_SHOWNORMAL)
+	err = windows.ShellExecute(0, verb, file, param, nil, windows.SW_HIDE)
 	if err != nil && err != windows.ERROR_SUCCESS {
 		return err
 	}

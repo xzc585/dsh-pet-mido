@@ -19,6 +19,7 @@ import { handleEnvironmentRoutes } from './environment.ts';
 import { handleInteractionRoutes } from './interaction.ts';
 import { handleMenuRoutes } from './menu.ts';
 import { handleMemoryCleanupRoutes } from './memory-cleanup.ts';
+import { handleSystemMemoryRoutes } from './system-memory.ts';
 import { handleMemoryRoutes } from './memory.ts';
 import { handleMotionRoutes } from './motion.ts';
 import { handlePlaybackRoutes } from './playback.ts';
@@ -45,6 +46,7 @@ const HANDLERS: readonly RouteHandler[] = [
   handleChatRoutes,
   handleMemoryRoutes,
   handleMemoryCleanupRoutes,
+  handleSystemMemoryRoutes,
   handleAttachmentRoutes,
   handleTodoRoutes,
   handleVoiceRoutes,

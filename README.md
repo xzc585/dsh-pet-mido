@@ -34,9 +34,9 @@ dsh plugin --profile desktop add file:C:\path\to\dsh-pet-mido\dsh-pet
 
 不要执行 `npm install dsh-pet`、`npm install -g dsh-pet`，也不要在「插件管理」里只填包名 `dsh-pet`。
 
-## 插件里的「清理内存」
+## 插件里的「清理缓存」
 
-插件设置页已有「清理内存」，默认是开着的。配置写在用户层 `main-config.jsonc` 顶层的 `memoryCleanup`：
+插件设置页已有「清理缓存」（原先叫「清理内存」），默认是开着的。它清的是插件自己的素材缓存，不是系统内存。配置写在用户层 `main-config.jsonc` 顶层的 `memoryCleanup`：
 
 | 字段 | 默认 | 含义 |
 | --- | --- | --- |
@@ -47,21 +47,25 @@ dsh plugin --profile desktop add file:C:\path\to\dsh-pet-mido\dsh-pet
 
 它会清掉语音缓存、当前没有在播的动画 blob，以及 uapi / 天气缓存。它 **不会** 删除对话记录或改长期记忆，也 **不能保证** 整个 DeepSeek Harness 进程的占用（RSS）立刻降下去。
 
-若要监视并回收 **整机系统内存**，请用下面的独立 Windows 工具，不要指望插件这张卡去清系统内存。
+若要监视并回收 **整机系统内存**，请用下面的「系统内存清理」：右键米豆，打开宠物设置即可调节，不必再单独运行一个软件。
 
 ## 对话配图
 
 米豆的对话配图 / 表情包尚未收录。因此设置或菜单里的「纳入对话的配图」现在可能是空的。这不是安装失败。上游「大肥鱼」那套表情包默认也不附带在本仓库中。
 
-## 系统内存清理工具（Windows）
+## 系统内存清理（Windows）
 
-`tools/mido-ram-cleaner/` 是一个独立的 Windows 程序，带中文设置窗口，可查看整机已用 / 可用 / 总共内存，并按阈值和定时自动回收 **可释放** 的内存（收缩进程工作集；管理员权限下还可清空待机列表）。它不会结束其他程序，也不改插件的 `memoryCleanup` 行为。
+右键桌面上的米豆，点「打开软件」，在 DeepSeek Harness 里打开设置，进入「桌宠配置」，即可看到「系统内存清理」。独立模式则是右键米豆 →「打开 AI 设置」，同一张卡。
 
-构建、使用方式和能力边界见 [tools/mido-ram-cleaner/README.md](tools/mido-ram-cleaner/README.md)。简要构建：
+在这张卡里可以查看当前整机已用 / 可用 / 总共内存，打开或关闭自动清理，设定定时间隔、占用阈值和最短间隔，也可以立刻清一次。改动会立刻生效，不必点页面底部的「保存」。这和上面的「清理缓存」不是一回事。
+
+真正干活的是无窗口后台帮手 `mido-ram-cleaner.exe`（仓库里在 `tools/mido-ram-cleaner/dist/`，插件会从 `dsh-pet/assets/tools/` 自动拉起）。它会回收 **可释放** 的内存（收缩进程工作集；管理员权限下还可清空待机列表），不会结束其他程序，也不会自动弹出设置窗口或托盘图标。配置保存在 `%APPDATA%\mido-ram-cleaner\config.json`。
+
+构建、API 与能力边界见 [tools/mido-ram-cleaner/README.md](tools/mido-ram-cleaner/README.md)。简要构建：
 
 ```sh
 cd tools/mido-ram-cleaner
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o dist/mido-ram-cleaner.exe .
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o dist/mido-ram-cleaner.exe .
 ```
 
 说明：清空工作集或待机列表通常只是把占用数字压下去，刚用过的页面还可能再读盘，不一定更流畅。

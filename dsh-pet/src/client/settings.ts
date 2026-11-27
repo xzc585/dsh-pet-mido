@@ -23,6 +23,7 @@ import { makeFontCard } from './settings/font-card.ts';
 import { makeGlobalCard, type GlobalFlagKey, type GlobalFlags } from './settings/global-card.ts';
 import { makeLoadStatus } from './settings/load-status.ts';
 import { makeCleanupCard } from './settings/cleanup-card.ts';
+import { makeSystemMemoryCard } from './settings/system-memory-card.ts';
 import { makeMemoryCard } from './settings/memory-card.ts';
 import { makeModelCard, type ChatFlagKey, type ChatFlagValues, type ModelFieldKey } from './settings/model-card.ts';
 import { makeMobileCard } from './settings/mobile-card.ts';
@@ -83,6 +84,7 @@ export function makePetConfigSection(
   const GlobalCard = makeGlobalCard(rt);
   const EnvironmentCard = makeEnvironmentCard(rt);
   const MemoryCard = makeMemoryCard(rt);
+  const SystemMemoryCard = makeSystemMemoryCard(rt);
   const CleanupCard = makeCleanupCard(rt);
   const VoiceCard = makeVoiceCard(rt, VoicePicker);
   const FontCard = makeFontCard(rt);
@@ -235,7 +237,7 @@ export function makePetConfigSection(
     const [chatModel, setChatModel] = useState<ModelSelection>({ provider: '', model: '' });
     // 对话历史条数（全局默认）：初值 10 是内置默认，加载效应会用成品 main.chatMemoryRounds 覆盖。
     const [chatMemory, setChatMemory] = useState(10);
-    // 清理内存：和上面的对话轮数无关。默认值与 config.jsonc 同一份。
+    // 清理缓存：和上面的对话轮数无关，也和系统内存清理不是一回事。默认值与 config.jsonc 同一份。
     const [cleanupEnabled, setCleanupEnabled] = useState(DEFAULT_MEMORY_CLEANUP.enabled);
     const [cleanupIntervalSec, setCleanupIntervalSec] = useState(DEFAULT_MEMORY_CLEANUP.intervalSec);
     const [cleanupThresholdMb, setCleanupThresholdMb] = useState(DEFAULT_MEMORY_CLEANUP.thresholdMb);
@@ -531,6 +533,7 @@ export function makePetConfigSection(
           powercontext: memory.powercontext,
           onPowerContextChange: patchPowerContext,
         }),
+        h(SystemMemoryCard, { busy }),
         h(CleanupCard, {
           busy,
           enabled: cleanupEnabled,

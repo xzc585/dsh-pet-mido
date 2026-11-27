@@ -12,7 +12,7 @@
 //   · 条目级（每个条目一份：main 一份、每个种类各一份；种类文件顶层可覆盖）：
 //     whisperPrompt / memes / workStatusTexts / animations / animationWeights
 //   · 只读 main（写了也只认 main 条目那份）：notificationsEnabled / eventsRefreshSec.balance /
-//     environmentCity（天气城市覆盖）/ memoryCleanup（清理内存：定时、阈值与防抖。和长期记忆 memory 不是一回事）
+//     environmentCity（天气城市覆盖）/ memoryCleanup（清理缓存：定时、阈值与防抖。和长期记忆 memory、系统内存清理都不是一回事）
 // 合并口径：所有顶层字段都是**整段替换**——写了就整段用自己的，缺的子键不会从本文件补回来
 //   （消费端各自兜底：余额周期读不到按 1800、碎碎念按 300）。
 {
@@ -62,7 +62,7 @@
     "provider": "native",
     "powercontext": { "endpoint": "http://127.0.0.1:8000", "token": "", "optimizeQuery": false }
   },
-  // ===================== 清理内存（全局默认；只读 main 这一份。和上面的「长期记忆」不是一回事） =====================
+  // ===================== 清理缓存（全局默认；只读 main 这一份。和上面的「长期记忆」、以及设置页的「系统内存清理」都不是一回事） =====================
   // 释放的是动画 blob、后台视频解码和语音缓存，不删 memory.json、不改 chatMemoryRounds。
   // enabled       总开关。关掉后定时与阈值都不跑；设置页「立即清理」仍然可用。
   // intervalSec   定时清理间隔（秒）。从上次清理或本次进程启动起算。

@@ -1,7 +1,7 @@
 /**
- * 「清理内存」卡：定时、阈值、防抖，外加一个立刻清的按钮。
+ * 「清理缓存」卡：定时、阈值、防抖，外加一个立刻清的按钮。
  *
- * 管的是动画缓存和进程占用，不是「长期记忆」那张卡。
+ * 管的是插件自己的动画缓存、语音缓存和进程占用，不是系统内存，也不是「长期记忆」那张卡。
  * 三个数字随「保存」整包写入；「立即清理」直接打宿主，不等保存。
  * @module dsh-pet/src/client/settings/cleanup-card
  */
@@ -42,7 +42,7 @@ export async function triggerMemoryCleanup(): Promise<{ ok: boolean; text: strin
 }
 
 /**
- * 造清理内存卡。
+ * 造清理缓存卡。
  *
  * @param rt - 注入的 react 能力与翻译函数。
  * @returns 卡片组件。

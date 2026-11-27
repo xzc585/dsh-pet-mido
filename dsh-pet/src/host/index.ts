@@ -12,6 +12,7 @@ import { registerChatCommand } from './plugin/command-chat.ts';
 import { registerPetCommand } from './plugin/command-pet.ts';
 import { registerLoops } from './plugin/loops.ts';
 import { registerMemoryCleanupLoop } from './memory-cleanup.ts';
+import { ensureSystemMemoryHelper, stopSystemMemoryHelper } from './system-memory.ts';
 import { seedBundledPetPacks } from './pet-pack-seed.ts';
 import { registerBalanceCommand } from './plugin/command-balance.ts';
 import { registerSessionWatch } from './plugin/session-watch.ts';
@@ -286,4 +287,14 @@ export function apply(ctx: any): void {
 
   // 路由就绪后拉起桌面 Helper（Electron 缺失时仅告警，不影响 DSH 与浏览器 overlay）
   startHelper();
+
+  // Windows 上在后台拉起无窗口的系统内存清理帮手，设置页通过 /system-memory 与它通信。
+  // 卸载时请它退出，避免留下没有托盘、也没有窗口的进程。
+  ctx.effect(
+    () => () => {
+      void stopSystemMemoryHelper();
+    },
+    'dsh-pet: system-memory helper',
+  );
+  void ensureSystemMemoryHelper();
 }

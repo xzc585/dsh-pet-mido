@@ -10,7 +10,7 @@
 export function globalsScript(): string {
   return `
 function globalCards() {
-  return [globalFlagsCard, voiceCard, fontCard, physicsCard, motionCard, modelCard, memoryCard, cleanupCard, environmentCard, advancedCard];
+  return [globalFlagsCard, voiceCard, fontCard, physicsCard, motionCard, modelCard, memoryCard, systemMemoryCard, cleanupCard, environmentCard, advancedCard];
 }
 
 function setGlobal(key, value) {
@@ -46,6 +46,144 @@ function pickCleanup(raw) {
   };
 }
 
+
+function formatRamBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—';
+  const gb = bytes / (1024 * 1024 * 1024);
+  if (gb >= 1) return (Math.round(gb * 10) / 10).toFixed(1).replace(/\.0$/, '') + ' GB';
+  return Math.max(0, Math.round(bytes / (1024 * 1024))) + ' MB';
+}
+
+function systemMemoryCard() {
+  const usage = make('p', { class: 'cardHint', text: '正在启动内存清理帮手…' });
+  const last = make('p', { class: 'cardHint', text: '' });
+  const status = make('span', { class: 'cardHint', text: '' });
+  const autoBox = make('input', { type: 'checkbox', id: 'g-sysmem-auto', checked: true });
+  const interval = make('input', { type: 'number', id: 'g-sysmem-interval', min: '30', max: '86400', step: '1', value: '1800' });
+  const threshold = make('input', { type: 'number', id: 'g-sysmem-threshold', min: '50', max: '99', step: '1', value: '85' });
+  const debounce = make('input', { type: 'number', id: 'g-sysmem-debounce', min: '10', step: '1', value: '120' });
+  const nowBtn = button('立即清理', async () => {
+    nowBtn.disabled = true;
+    status.textContent = '正在清理…';
+    try {
+      const body = await callApi('POST', '/system-memory');
+      applySystemMemory(body);
+      status.textContent = body && body.message ? body.message : (last.textContent || '已清理。');
+    } catch (error) {
+      status.textContent = (error && error.message) ? error.message : '清理失败，请稍后重试。';
+    } finally {
+      nowBtn.disabled = false;
+    }
+  });
+  const adminBtn = button('以管理员身份完整清理一次', async () => {
+    adminBtn.disabled = true;
+    status.textContent = '正在请求权限…';
+    try {
+      const body = await callApi('POST', '/system-memory/clean-elevated');
+      applySystemMemory(body);
+      status.textContent = body && body.message ? body.message : '已发出管理员权限请求。若你同意提升，完整清理会在后台完成。';
+    } catch (error) {
+      status.textContent = (error && error.message) ? error.message : '清理失败，请稍后重试。';
+    } finally {
+      adminBtn.disabled = false;
+    }
+  });
+  let current = { autoClean: true, intervalSec: 1800, thresholdPercent: 85, debounceSec: 120 };
+  let available = true;
+
+  function setDisabled(disabled) {
+    autoBox.disabled = disabled;
+    interval.disabled = disabled;
+    threshold.disabled = disabled;
+    debounce.disabled = disabled;
+    nowBtn.disabled = disabled;
+    adminBtn.disabled = disabled;
+  }
+
+  function applySystemMemory(body) {
+    if (!body) return;
+    if (body.available === false) {
+      available = false;
+      setDisabled(true);
+      if (body.reason === 'not-windows') usage.textContent = '系统内存清理只在 Windows 上可用。';
+      else if (body.reason === 'helper-missing') usage.textContent = '没有找到系统内存清理帮手，请确认插件目录里有这份工具。';
+      else usage.textContent = body.message || '暂时无法连接到系统内存清理帮手。';
+      return;
+    }
+    available = true;
+    setDisabled(false);
+    if (body.config) {
+      current = body.config;
+      autoBox.checked = current.autoClean === true;
+      interval.value = String(current.intervalSec);
+      threshold.value = String(current.thresholdPercent);
+      debounce.value = String(current.debounceSec);
+    }
+    if (typeof body.usedPercent === 'number' && typeof body.usedBytes === 'number' && typeof body.totalBytes === 'number') {
+      const availText = typeof body.availableBytes === 'number' ? formatRamBytes(body.availableBytes) : '—';
+      usage.textContent = '已用 ' + (Math.round(body.usedPercent * 10) / 10) + '%（' + formatRamBytes(body.usedBytes) + ' / ' + formatRamBytes(body.totalBytes) + '，可用 ' + availText + '）';
+    }
+    if (body.lastClean && body.lastClean.before && body.lastClean.after) {
+      const prefix = body.lastClean.standbyCleared ? '上次清理（已含待机列表）：已用从 ' : '上次清理：已用从 ';
+      last.textContent = prefix + formatRamBytes(body.lastClean.before.usedBytes || 0) + ' 降到 ' + formatRamBytes(body.lastClean.after.usedBytes || 0) + '。';
+    }
+    if (body.isAdmin === true) adminBtn.hidden = true;
+    if (body.ok === false && body.message) status.textContent = body.message;
+  }
+
+  async function saveConfig() {
+    if (!available) return;
+    const intervalSec = Math.round(Number(interval.value));
+    const thresholdPercent = Math.round(Number(threshold.value));
+    let debounceSec = Math.round(Number(debounce.value));
+    if (!Number.isFinite(intervalSec) || !Number.isFinite(thresholdPercent) || !Number.isFinite(debounceSec)) return;
+    if (debounceSec > intervalSec) debounceSec = intervalSec;
+    current = { autoClean: autoBox.checked, intervalSec: intervalSec, thresholdPercent: thresholdPercent, debounceSec: debounceSec };
+    status.textContent = '正在保存…';
+    try {
+      const body = await callApi('POST', '/system-memory/config', current);
+      applySystemMemory(body);
+      if (body && body.ok === false) status.textContent = body.message || '设置未能保存。';
+      else status.textContent = '已保存。';
+    } catch (error) {
+      status.textContent = (error && error.message) ? error.message : '设置未能保存。';
+    }
+  }
+
+  autoBox.addEventListener('change', () => { void saveConfig(); });
+  interval.addEventListener('change', () => { void saveConfig(); });
+  threshold.addEventListener('change', () => { void saveConfig(); });
+  debounce.addEventListener('change', () => { void saveConfig(); });
+
+  void (async function refreshSystemMemory() {
+    try {
+      applySystemMemory(await callApi('GET', '/system-memory'));
+    } catch (error) {
+      usage.textContent = (error && error.message) ? error.message : '暂时无法连接到系统内存清理帮手。';
+    }
+  })();
+  setInterval(() => {
+    if (!available) return;
+    void callApi('GET', '/system-memory').then(applySystemMemory).catch(() => undefined);
+  }, 2000);
+
+  return card('系统内存清理', '回收整机可释放的物理内存：收缩各进程工作集；若以管理员身份清理，还可清空待机列表。不会结束其他程序，也不删除对话记录。这和下面的「清理缓存」不是一回事。改动会立刻生效，不必点页面底部的「保存」。', [
+    usage,
+    last,
+    make('label', { class: 'rowCheck' }, [
+      autoBox,
+      make('span', { class: 'rowCheckText' }, [
+        make('span', { class: 'rowCheckTitle', text: '启用自动清理' }),
+        make('span', { class: 'rowCheckHint', text: '关掉后不再按定时或占用阈值自动清理；「立即清理」仍然可用。' }),
+      ]),
+    ]),
+    fieldRow('g-sysmem-interval', '定时间隔（秒）', interval, '从上次清理或帮手启动起算。到点就清一次；若占用先达到阈值，会提前清理。须在 30 到 86400 秒之间。'),
+    fieldRow('g-sysmem-threshold', '占用阈值（%）', threshold, '已用物理内存达到该百分比就提前清理。须在 50% 到 99% 之间。'),
+    fieldRow('g-sysmem-debounce', '最短间隔（秒）', debounce, '两次自动清理的最短间隔，须不小于 10 秒，且不能大于定时间隔。'),
+    make('div', { class: 'row' }, [nowBtn, adminBtn, status]),
+  ]);
+}
+
 function cleanupCard() {
   const g = state.globals;
   if (!g.memoryCleanup) g.memoryCleanup = Object.assign({}, FALLBACK_MEMORY_CLEANUP);
@@ -69,7 +207,7 @@ function cleanupCard() {
       g.memoryCleanup.debounceSec = g.memoryCleanup.intervalSec;
     }
   };
-  return card('清理内存', '释放动画缓存、后台视频解码和语音缓存。这和上面的「长期记忆」不是一回事，不会删除对话记录。定时与占用阈值谁先到就触发；两次自动清理之间有最短间隔。关掉开关后仍可用「立即清理」。', [
+  return card('清理缓存', '释放米豆插件自己的动画缓存、后台视频解码和语音缓存。这不会清理系统内存，也不会删除对话记录。这和上面的「长期记忆」、以及再上面的「系统内存清理」都不是一回事。若要回收整机内存，请用「系统内存清理」。定时与占用阈值谁先到就触发；两次自动清理之间有最短间隔。关掉开关后仍可用「立即清理」。', [
     toggleRow('g-cleanup-enabled', '启用定时清理', '关掉后定时与阈值都不再自动跑；「立即清理」仍然可用。', g.memoryCleanup.enabled, (value) => patchCleanup('enabled', value)),
     numberField('g-cleanup-interval', '定时间隔（秒）', g.memoryCleanup.intervalSec, (value) => patchCleanup('intervalSec', Math.round(clampNumber(value, 1, 86400 * 30, FALLBACK_MEMORY_CLEANUP.intervalSec))), { min: 1, step: 1, hint: '从上次清理或本次进程启动起算。若占用先达到阈值，会提前清理。' }),
     numberField('g-cleanup-threshold', '触发阈值（MB）', g.memoryCleanup.thresholdMb, (value) => patchCleanup('thresholdMb', Math.round(clampNumber(value, 1, 1024 * 1024, FALLBACK_MEMORY_CLEANUP.thresholdMb))), { min: 1, step: 1, hint: '进程堆或本插件缓存（语音文件 / 动画素材）任一达到该值就提前清理。' }),

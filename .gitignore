@@ -57,3 +57,5 @@ tools/mido-ram-cleaner/dist/
 *.exe
 !tools/mido-ram-cleaner/dist/
 !tools/mido-ram-cleaner/dist/mido-ram-cleaner.exe
+!dsh-pet/assets/tools/
+!dsh-pet/assets/tools/mido-ram-cleaner.exe

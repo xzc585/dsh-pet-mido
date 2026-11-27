@@ -76,20 +76,29 @@ func main() {
 	log.SetFlags(0)
 	log.SetPrefix("mido-ram-cleaner: ")
 
+	uiMode := false
+	oneShot := false
+	for _, a := range os.Args[1:] {
+		switch a {
+		case "--clean-once":
+			oneShot = true
+		case "--ui":
+			uiMode = true
+		}
+	}
+
 	mutex, running := alreadyRunning()
 	if running {
-		_ = openExistingUI()
+		// Default is headless: a second launch is a no-op because the API is already up.
+		// --ui still asks the existing process to show the debug window.
+		if uiMode {
+			_ = openExistingUI()
+		}
 		closeMutex(mutex)
 		return
 	}
 	defer closeMutex(mutex)
 
-	oneShot := false
-	for _, a := range os.Args[1:] {
-		if a == "--clean-once" {
-			oneShot = true
-		}
-	}
 	if oneShot {
 		rep := cleanMemory()
 		if dir, err := appDir(); err == nil {
@@ -107,6 +116,13 @@ func main() {
 		state.lastClean = last
 	}
 
+	quitCh := make(chan struct{})
+	var quitOnce sync.Once
+	signalQuit := func() {
+		quitOnce.Do(func() { close(quitCh) })
+	}
+
+	var server *http.Server
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -118,11 +134,13 @@ func main() {
 		_, _ = w.Write(uiHTML)
 	})
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "app": "mido-ram-cleaner"})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "app": "mido-ram-cleaner", "ui": uiMode})
 	})
 	mux.HandleFunc("/api/open", func(w http.ResponseWriter, r *http.Request) {
-		openSettingsWindow(uiURL())
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		if uiMode {
+			openSettingsWindow(uiURL())
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "ui": uiMode})
 	})
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, state.snapshot())
@@ -185,36 +203,64 @@ func main() {
 			"message": "已发出管理员权限请求。若你同意提升，完整清理会在后台完成，稍后刷新即可看到结果。若取消，仍可用「立即清理」做不需要管理员的部分。",
 		})
 	})
+	mux.HandleFunc("/api/quit", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "请使用 POST")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			if server != nil {
+				_ = server.Close()
+			}
+			signalQuit()
+		}()
+	})
 
 	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
-		showError("米豆系统内存清理", "无法打开设置窗口服务（"+listenAddr+"）："+err.Error())
+		writeAppLog("无法监听 " + listenAddr + "：" + err.Error())
+		if uiMode {
+			showError("米豆系统内存清理", "无法打开本机接口（"+listenAddr+"）："+err.Error())
+		}
 		os.Exit(1)
 	}
-	server := &http.Server{Handler: mux}
+	server = &http.Server{Handler: mux}
 	go func() {
 		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
-			log.Printf("设置窗口服务退出：%v", err)
-			requestQuit()
+			writeAppLog("本机接口退出：" + err.Error())
+			signalQuit()
 		}
 	}()
 
 	go state.autoLoop()
-	openSettingsWindow(uiURL())
 
-	if err := startTray(func() {
+	// Default: no settings window, no tray, no visible UI. The plugin talks to the API.
+	if uiMode {
 		openSettingsWindow(uiURL())
-	}, func() {
-		state.runClean()
-	}, func() {
-		_ = server.Close()
-		requestQuit()
-	}); err != nil {
-		log.Printf("托盘图标未能创建：%v（设置窗口仍可使用）", err)
-		// Keep the process running for the settings UI.
-		select {}
+		if err := startTray(func() {
+			openSettingsWindow(uiURL())
+		}, func() {
+			state.runClean()
+		}, func() {
+			_ = server.Close()
+			signalQuit()
+			requestQuit()
+		}); err != nil {
+			writeAppLog("托盘图标未能创建：" + err.Error())
+			<-quitCh
+			return
+		}
+		go func() {
+			<-quitCh
+			requestQuit()
+		}()
+		runTrayLoop()
+		return
 	}
-	runTrayLoop()
+
+	<-quitCh
 }
 
 func uiURL() string { return "http://" + listenAddr + "/" }
@@ -222,12 +268,24 @@ func uiURL() string { return "http://" + listenAddr + "/" }
 func openExistingUI() error {
 	resp, err := http.Get("http://" + listenAddr + "/api/open")
 	if err != nil {
-		// Best-effort: just open the URL.
-		openSettingsWindow(uiURL())
 		return err
 	}
 	defer resp.Body.Close()
 	return nil
+}
+
+func writeAppLog(msg string) {
+	log.Print(msg)
+	dir, err := appDir()
+	if err != nil {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "helper.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = f.WriteString(time.Now().Format(time.RFC3339) + " " + msg + "\n")
 }
 
 func (s *appState) autoLoop() {

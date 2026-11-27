@@ -132,9 +132,9 @@ dsh-pet 的宿主半侧向 DSH 自己的 Web 服务注册了**一条前缀路由
 ---
 
 
-## 清理内存（本衍生版）
+## 清理缓存（本衍生版）
 
-与「长期记忆」接口（`/memory/providers`、`/chat/memory`）不是同一组。
+与「长期记忆」接口（`/memory/providers`、`/chat/memory`）不是同一组，也和下面的「系统内存清理」不是同一组。这里清的是插件缓存。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -142,6 +142,17 @@ dsh-pet 的宿主半侧向 DSH 自己的 Web 服务注册了**一条前缀路由
 | `POST /dsh-pet-7340/memory-cleanup` | 立即清理一次（不受开关和防抖限制）。成功时返回 `ok`、`freedBytes`、`reason: "manual"` 等 |
 
 页面收到宿主写入的 `sections.memoryCleanup` 后，会同步松开未在播放的动画缓存。
+
+## 系统内存清理（本衍生版，Windows）
+
+设置页「系统内存清理」走这组接口。宿主会按需拉起无窗口帮手 `mido-ram-cleaner.exe`，再转发到本机 `127.0.0.1:17341`。清的是整机可释放物理内存，不是插件缓存。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET /dsh-pet-7340/system-memory` | 当前整机占用、是否管理员、自动清理配置、上次清理；帮手不可用时 `available: false` |
+| `POST /dsh-pet-7340/system-memory` | 立即清理一次（收缩工作集） |
+| `POST /dsh-pet-7340/system-memory/config` | 写入自动清理设置（`autoClean`、`intervalSec`、`thresholdPercent`、`debounceSec`） |
+| `POST /dsh-pet-7340/system-memory/clean-elevated` | 请求管理员权限后做一次完整清理（含待机列表） |
 
 ## state 详解
 

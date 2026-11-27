@@ -1,5 +1,5 @@
 /**
- * 独立模式设置页「清理内存」卡的契约测试。
+ * 独立模式设置页「清理缓存」卡的契约测试。
  *
  * 与「长期记忆」卡分开：缺段时用内置默认并随保存提交；手动按钮打 POST /memory-cleanup。
  */
@@ -112,7 +112,7 @@ function walk(node: FakeNode, out: FakeNode[] = []): FakeNode[] {
   return out;
 }
 
-describe('独立模式清理内存', () => {
+describe('独立模式清理缓存', () => {
   test('成品里没有这一段 → 草稿用内置默认，保存时会带上', () => {
     const page = probe();
     page.initDrafts({ main: { pets: [] } });
@@ -135,7 +135,7 @@ describe('独立模式清理内存', () => {
     const titles = walk(card)
       .map((item) => item.textContent)
       .filter((text): text is string => Boolean(text));
-    assert.ok(titles.some((text) => text.includes('清理内存')));
+    assert.ok(titles.some((text) => text.includes('清理缓存')));
     assert.ok(titles.some((text) => text.includes('立即清理')));
     assert.ok(
       titles.every((text) => !text.includes('长期记忆') || text.includes('不是一回事')),

@@ -1,7 +1,7 @@
 {
   "name": "dsh-pet",
   "version": "0.4.9",
-  "description": "dsh-pet 衍生版：原创毛茸茸三维奶油色小狗「米豆」桌宠，并增加可配置的定时清理内存。代码源自 https://github.com/PC2005-cloud/dsh-pet（MIT）；本仓库不附带原「大肥鱼」形象素材。",
+  "description": "dsh-pet 衍生版：原创毛茸茸三维奶油色小狗「米豆」桌宠，并增加可配置的系统内存清理与插件缓存清理。代码源自 https://github.com/PC2005-cloud/dsh-pet（MIT）；本仓库不附带原「大肥鱼」形象素材。",
   "icon": "assets/logo.png",
   "keywords": [
     "dsh",
@@ -71,7 +71,8 @@
     "assets/logo.png",
     "scripts/ensure-electron.mjs",
     "cordis.patch.yml",
-    "assets/pet-packs"
+    "assets/pet-packs",
+    "assets/tools"
   ],
   "scripts": {
     "bundle": "tsdown",
