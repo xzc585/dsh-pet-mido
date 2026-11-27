@@ -29,6 +29,14 @@ Object.assign(PetSprite.prototype, {
         action: 'open-site',
         hint: OPEN_SHORTCUT_HINT,
       },
+      // 独立入口才有：连上 DSH 后同一只宠物接上宿主，而不是再开一只。
+      ...(APP_MODE_UI
+        ? [
+            DSH_CONNECTED
+              ? { label: '断开 DeepSeek Harness', action: 'dsh-disconnect' }
+              : { label: '连接 DeepSeek Harness', action: 'dsh-connect' },
+          ]
+        : []),
       // 「查看余额」无条件显示：关了 balanceEnabled 的宠物也能点，手动请求不受开关限制，点了一定给答复。
       { label: '查看余额', action: 'show-balance' },
       // 「查询天气」与余额同一类：宿主强制刷新并写 sections.env，气泡由 /state 驱动。
@@ -113,6 +121,22 @@ Object.assign(PetSprite.prototype, {
     }
     if (leaf.action === 'open-site') {
       if (window.petBridge) window.petBridge.openDshSite(ORIGIN); // 系统默认浏览器打开（等效 Ctrl+点击链接）
+      return;
+    }
+    if (leaf.action === 'dsh-connect' || leaf.action === 'dsh-disconnect') {
+      const method = leaf.action === 'dsh-connect' ? 'connectDsh' : 'disconnectDsh';
+      if (!window.petBridge || typeof window.petBridge[method] !== 'function') {
+        this.showWhisper('当前无法连接 DeepSeek Harness。请使用米豆入口程序（mido.exe）。', undefined, undefined, 8000, false);
+        return;
+      }
+      window.petBridge[method]()
+        .then((result) => {
+          const text = (result && result.message) || (result && result.ok ? '已完成。' : '操作没有成功。');
+          this.showWhisper(text, undefined, undefined, 8000, false);
+        })
+        .catch(() => {
+          this.showWhisper('连接操作失败，请稍后再试。', undefined, undefined, 8000, false);
+        });
       return;
     }
     if (leaf.action === 'show-balance') {

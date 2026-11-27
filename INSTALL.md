@@ -70,7 +70,9 @@ npm run ensure:electron   # 首次：解析或下载本机 Electron
 npm run dist              # electron-builder 打包
 ```
 
-产物在 `dist-app/win-unpacked/`，双击其中的 `dsh-pet.exe`。本仓库不保证提供现成的 Release 绿色包。
+产物在 `dist-app/win-unpacked/`，双击其中的 `dsh-pet.exe`。日常更推荐使用仓库里构建的入口 **`tools/mido/dist/mido.exe`**：它会复用已安装的插件目录和本机 Electron，不必再打一整份 Electron 包。
+
+把 `mido.exe` 放到桌面后直接双击即可。打开 DeepSeek Harness（desktop 配置）后，同一只米豆会自动连接；也可以右键「连接 DeepSeek Harness」。详见 [tools/mido/README.md](tools/mido/README.md)。
 
 ### 能力边界
 
@@ -78,7 +80,7 @@ npm run dist              # electron-builder 打包
 - **不可用**：余额、碎碎念、对话、系统通知——没有 DSH 的凭据与模型连接。
 - **配置**：与 DSH 同一份（`$DSH_HOME/dsh-pet/main-config.jsonc` → 包内默认）。
 - **只显示** `display` 含 `desktop` / `both` 的实例。
-- **可与 DSH 内运行同时开**，但共用 `%APPDATA%\dsh-pet-electron-helper`，可能互相踩缓存（仅告警）。
+- **与 DSH 的关系**：独立入口在桌面上时，插件不会再拉起第二只桌面宠物，而是把聊天、任务状态、配图等宿主能力接到这只已有的米豆上。没有现成官方 attach API，连接走的是本仓库的本机发现协议（见 `dsh-pet/src/shared/mido-attach.ts`）。
 
 ## 安装后你会看到什么
 

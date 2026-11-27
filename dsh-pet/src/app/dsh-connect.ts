@@ -1,0 +1,362 @@
+/**
+ * 独立入口连接 / 断开 DeepSeek Harness。
+ *
+ * 依据是插件写下的本机发现文件与接入服务（见 shared/mido-attach、host/plugin/desktop/attach-host），
+ * 不是虚构的 DSH 官方 attach API。连上后把桌面 Helper 的配置地址切到插件接入服务，
+ * 同一只宠物即可使用宿主的聊天、任务状态和配图；断开后回到本机独立服务。
+ * 连接失败必须给出中文原因，不得静默失败。
+ * @module dsh-pet/src/app/dsh-connect
+ */
+import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+
+import {
+  ATTACH_TOKEN_HEADER,
+  HOST_DISCOVERY_FILE,
+  HOST_KIND,
+  STANDALONE_DISCOVERY_FILE,
+  STANDALONE_KIND,
+  buildDiscovery,
+  discoveryPath,
+  readLiveDiscovery,
+  type DiscoveryRecord,
+} from '../shared/mido-attach.ts';
+import { ROUTE_SEGMENT } from '../shared/constants.ts';
+
+/** 一次连接或断开的结果，给菜单、设置页和日志用。 */
+export interface ConnectResult {
+  /** 是否成功。 */
+  readonly ok: boolean;
+  /** 给用户看的中文说明。 */
+  readonly message: string;
+}
+
+/** 当前连接状态。 */
+export interface ConnectStatus {
+  /** standalone = 仅本机运行；dsh = 已接到 DeepSeek Harness。 */
+  readonly mode: 'standalone' | 'dsh';
+  /** 给设置页 / 托盘看的中文状态。 */
+  readonly message: string;
+  /** 现在能否发起手动连接。 */
+  readonly canConnect: boolean;
+  /** 现在能否断开。 */
+  readonly canDisconnect: boolean;
+  /** 最近一次失败原因（没有则为空串）。 */
+  readonly lastError: string;
+}
+
+/** 交给桌面 Helper 的切换参数。 */
+export interface RetargetSession {
+  /** 宠物配置地址。 */
+  readonly configUrl: string;
+  /** 菜单「打开」用的已鉴权入口；独立模式为本机设置页。 */
+  readonly siteUrl: string;
+  /** 菜单首项去向。 */
+  readonly openTarget: 'desktop' | 'standalone' | 'web';
+  /** 访问配置地址时要带的令牌。 */
+  readonly token: string;
+  /** 是否已接到 DSH。 */
+  readonly connected: boolean;
+}
+
+/** 连接器依赖。 */
+export interface DshConnectOptions {
+  /** `$DSH_HOME`。 */
+  dshHome: string;
+  /** 本机独立服务 origin。 */
+  localOrigin: () => string;
+  /** 本机独立服务令牌。 */
+  localToken: () => string;
+  /** 本机设置页的已鉴权地址。 */
+  localSiteUrl: () => string;
+  /** 包版本，写入发现记录。 */
+  version: string;
+  /** 写日志（不得包含令牌或 siteUrl）。 */
+  log(message: string): void;
+  /** 把桌面 Helper 切到新的配置地址；窗口可以重建，但不要再拉起第二只进程。 */
+  retarget(session: RetargetSession): Promise<void>;
+}
+
+/** 插件 session 接口的最小形状。 */
+interface HostSession {
+  ok?: boolean;
+  openTarget?: string;
+  configUrl?: string;
+  siteUrl?: string;
+}
+
+const CONNECT_TIMEOUT_MS = 2500;
+
+/**
+ * 带超时的本机 fetch；失败时抛中文错误。
+ */
+async function fetchJson(
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs = CONNECT_TIMEOUT_MS,
+): Promise<unknown> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { method: 'GET', headers, signal: ac.signal, cache: 'no-store' });
+    const data: unknown = await response.json().catch(() => undefined);
+    if (!response.ok) {
+      const err = data && typeof data === 'object' && 'error' in data ? String((data as { error: unknown }).error) : '';
+      throw new Error(err || `接入服务返回 HTTP ${response.status}`);
+    }
+    return data;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('连接超时，DeepSeek Harness 没有在限定时间内应答');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * 把进程列表文本判断成「像 DeepSeek Harness 正在运行」。
+ * 只作补充提示，不能单靠它断定插件已就绪。
+ * @param listing - 任务列表或类似文本。
+ */
+export function lookLikeDshProcess(listing: string): boolean {
+  const text = listing.toLowerCase();
+  return text.includes('deepseek harness') || text.includes('deepseek-harness') || /\bdeepseekharness\b/.test(text);
+}
+
+/**
+ * 本机独立运行时应注入 Helper 的会话。
+ */
+export function localSession(opts: Pick<DshConnectOptions, 'localOrigin' | 'localToken' | 'localSiteUrl'>): RetargetSession {
+  return {
+    configUrl: `${opts.localOrigin()}${ROUTE_SEGMENT}/config`,
+    siteUrl: opts.localSiteUrl(),
+    openTarget: 'standalone',
+    token: opts.localToken(),
+    connected: false,
+  };
+}
+
+/**
+ * 创建独立入口的连接器。
+ */
+export function createDshConnect(opts: DshConnectOptions) {
+  const standaloneFile = discoveryPath(opts.dshHome, STANDALONE_DISCOVERY_FILE);
+  let mode: 'standalone' | 'dsh' = 'standalone';
+  let lastError = '';
+  let disposed = false;
+  let helperReady = false;
+  let watchTimer: NodeJS.Timeout | undefined;
+  let heartbeatTimer: NodeJS.Timeout | undefined;
+  let connecting = false;
+  let lastSession: RetargetSession = localSession(opts);
+
+  const writeStandaloneFile = (): void => {
+    const origin = opts.localOrigin();
+    if (!origin) return;
+    mkdirSync(dirname(standaloneFile), { recursive: true });
+    const record = buildDiscovery({
+      kind: STANDALONE_KIND,
+      pid: process.pid,
+      origin,
+      token: opts.localToken(),
+      version: opts.version,
+    });
+    writeFileSync(standaloneFile, JSON.stringify(record), { encoding: 'utf8', mode: 0o600 });
+  };
+
+  const removeStandaloneFile = (): void => {
+    try {
+      unlinkSync(standaloneFile);
+    } catch {
+      /* 忽略 */
+    }
+  };
+
+  const currentHost = (): DiscoveryRecord | undefined =>
+    readLiveDiscovery(opts.dshHome, HOST_DISCOVERY_FILE, HOST_KIND);
+
+  const status = (): ConnectStatus => {
+    if (mode === 'dsh') {
+      return {
+        mode,
+        message: '已连接到 DeepSeek Harness。聊天、任务状态和配图会走宿主；右键「打开软件」可打开 DSH。',
+        canConnect: false,
+        canDisconnect: true,
+        lastError,
+      };
+    }
+    if (currentHost()) {
+      return {
+        mode,
+        message: '检测到 DeepSeek Harness 中的米豆插件已就绪，可以连接。也可以点「连接 DeepSeek Harness」。',
+        canConnect: true,
+        canDisconnect: false,
+        lastError,
+      };
+    }
+    return {
+      mode,
+      message:
+        lastError ||
+        '当前是独立运行。打开 DeepSeek Harness（desktop 配置）后会自动连接；也可以在菜单里手动连接。',
+      canConnect: true,
+      canDisconnect: false,
+      lastError,
+    };
+  };
+
+  const applySession = async (session: RetargetSession, retargetNow: boolean): Promise<void> => {
+    lastSession = session;
+    mode = session.connected ? 'dsh' : 'standalone';
+    if (retargetNow && helperReady) await opts.retarget(session);
+  };
+
+  const readHostSession = async (host: DiscoveryRecord): Promise<RetargetSession> => {
+    const health = await fetchJson(`${host.origin}/mido-attach/health`, {});
+    if (!health || typeof health !== 'object' || (health as { kind?: string }).kind !== HOST_KIND) {
+      throw new Error('找到了本机接入端口，但那不是米豆插件的接入服务');
+    }
+    const session = (await fetchJson(`${host.origin}/mido-attach/session`, {
+      [ATTACH_TOKEN_HEADER]: host.token,
+    })) as HostSession;
+    if (!session || session.ok !== true || typeof session.configUrl !== 'string' || typeof session.siteUrl !== 'string') {
+      throw new Error('米豆插件已就绪，但没有返回可用的会话信息');
+    }
+    const openTarget =
+      session.openTarget === 'web' || session.openTarget === 'standalone' ? session.openTarget : 'desktop';
+    return {
+      configUrl: session.configUrl,
+      siteUrl: session.siteUrl,
+      openTarget,
+      token: host.token,
+      connected: true,
+    };
+  };
+
+  const connect = async (): Promise<ConnectResult> => {
+    if (connecting) return { ok: false, message: '正在连接，请稍候。' };
+    if (mode === 'dsh') return { ok: true, message: '已经连接到 DeepSeek Harness。' };
+    const host = currentHost();
+    if (!host) {
+      lastError =
+        '没有找到 DeepSeek Harness 里的米豆插件。请先启动 DeepSeek Harness（desktop 配置），并确认已安装本仓库的 dsh-pet 插件。';
+      opts.log('手动连接失败：未发现插件接入服务');
+      return { ok: false, message: lastError };
+    }
+    connecting = true;
+    try {
+      const session = await readHostSession(host);
+      await applySession(session, true);
+      lastError = '';
+      opts.log('已连接到 DeepSeek Harness，桌面上仍是这一只米豆');
+      return { ok: true, message: '已连接到 DeepSeek Harness。聊天、任务状态和配图现在走宿主。' };
+    } catch (error) {
+      lastError = `未能连接 DeepSeek Harness：${error instanceof Error ? error.message : String(error)}`;
+      opts.log(`手动连接失败：${error instanceof Error ? error.message : String(error)}`);
+      return { ok: false, message: lastError };
+    } finally {
+      connecting = false;
+    }
+  };
+
+  const disconnect = async (): Promise<ConnectResult> => {
+    if (mode !== 'dsh') return { ok: true, message: '当前本来就是独立运行。' };
+    try {
+      await applySession(localSession(opts), true);
+      lastError = '';
+      opts.log('已断开 DeepSeek Harness，米豆继续在桌面上独立运行');
+      return { ok: true, message: '已断开 DeepSeek Harness。米豆仍在桌面上，可继续待机、走动和打开设置。' };
+    } catch (error) {
+      lastError = `断开时出错：${error instanceof Error ? error.message : String(error)}`;
+      return { ok: false, message: lastError };
+    }
+  };
+
+  const autoConnect = async (): Promise<ConnectResult | undefined> => {
+    if (disposed || mode === 'dsh' || connecting) return undefined;
+    if (!currentHost()) return undefined;
+    opts.log('检测到 DeepSeek Harness 中的米豆插件，正在自动连接');
+    const result = await connect();
+    if (!result.ok) opts.log(`自动连接未成功：${result.message}`);
+    return result;
+  };
+
+  const watch = (): void => {
+    if (disposed) return;
+    if (mode === 'dsh') {
+      if (!currentHost()) {
+        opts.log('DeepSeek Harness 已退出或插件已卸载，米豆改回独立运行');
+        void disconnect();
+      }
+      return;
+    }
+    void autoConnect();
+  };
+
+  const start = (): void => {
+    writeStandaloneFile();
+    heartbeatTimer = setInterval(() => {
+      if (!disposed) writeStandaloneFile();
+    }, 30_000);
+    heartbeatTimer.unref?.();
+    watchTimer = setInterval(watch, 2000);
+    watchTimer.unref?.();
+  };
+
+  /**
+   * 启动 Helper 之前调用：若插件已在，返回应注入环境变量的会话，不再调用 retarget。
+   * Helper 起来之后请再调用 {@link markHelperReady}。
+   */
+  const bootSession = async (): Promise<RetargetSession> => {
+    const host = currentHost();
+    if (!host) {
+      lastSession = localSession(opts);
+      mode = 'standalone';
+      return lastSession;
+    }
+    try {
+      const session = await readHostSession(host);
+      await applySession(session, false);
+      lastError = '';
+      opts.log('启动时已发现 DeepSeek Harness，将直接接到宿主（不会再开第二只米豆）');
+      return session;
+    } catch (error) {
+      lastError = `启动时自动连接失败：${error instanceof Error ? error.message : String(error)}`;
+      opts.log(lastError);
+      lastSession = localSession(opts);
+      mode = 'standalone';
+      return lastSession;
+    }
+  };
+
+  const markHelperReady = (): void => {
+    helperReady = true;
+  };
+
+  const dispose = (): void => {
+    disposed = true;
+    if (watchTimer) clearInterval(watchTimer);
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    watchTimer = undefined;
+    heartbeatTimer = undefined;
+    removeStandaloneFile();
+  };
+
+  return {
+    start,
+    dispose,
+    status,
+    connect,
+    disconnect,
+    autoConnect,
+    bootSession,
+    markHelperReady,
+    writeStandaloneFile,
+    currentSession: () => lastSession,
+  };
+}
+
+/** 连接器产出。 */
+export type DshConnect = ReturnType<typeof createDshConnect>;

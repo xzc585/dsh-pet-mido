@@ -24,6 +24,7 @@ import { sendIcon } from '../standalone/server/respond.ts';
 import { readChatPanelScript } from '../standalone/chat-panel-asset.ts';
 import { readSettingsIcon } from '../standalone/icon.ts';
 import { settingsPage, settingsScript, settingsStyle } from '../standalone/settings-page.ts';
+import type { ConnectResult, ConnectStatus } from './dsh-connect.ts';
 
 /** 路由依赖：安全校验、AI 处理器与两个页面的数据源，全部注入以脱离 Electron 测试。 */
 interface RouterDeps {
@@ -34,6 +35,12 @@ interface RouterDeps {
   landingPage(port: number): string;
   /** 对话面板脚本来源；缺省读包内 `lib/chat-panel.js`，测试可注入。 */
   chatPanelScript?: () => string | undefined;
+  /** DeepSeek Harness 连接器；CLI 独立模式没有它，设置页会显示说明。 */
+  connect?: {
+    status(): ConnectStatus;
+    connect(): Promise<ConnectResult>;
+    disconnect(): Promise<ConnectResult>;
+  };
 }
 
 /**
@@ -129,6 +136,32 @@ export function startRouter(
       const aiHandler = aiRoutes[url.pathname];
       if (aiHandler) {
         await aiHandler(request, res);
+        return;
+      }
+      if (
+        url.pathname === '/mido-control/status' ||
+        url.pathname === '/mido-control/connect' ||
+        url.pathname === '/mido-control/disconnect'
+      ) {
+        if (!deps.connect) {
+          rejectRequest(res, 404, '请使用米豆入口程序（mido.exe）连接 DeepSeek Harness');
+          return;
+        }
+        if (url.pathname === '/mido-control/status') {
+          if (method !== 'GET' && method !== 'HEAD') {
+            rejectRequest(res, 405, '仅支持 GET');
+            return;
+          }
+          sendText(res, 200, 'application/json', JSON.stringify(deps.connect.status()));
+          return;
+        }
+        if (method !== 'POST') {
+          rejectRequest(res, 405, '仅支持 POST');
+          return;
+        }
+        const result =
+          url.pathname === '/mido-control/connect' ? await deps.connect.connect() : await deps.connect.disconnect();
+        sendText(res, result.ok ? 200 : 409, 'application/json', JSON.stringify(result));
         return;
       }
       if (!route) {

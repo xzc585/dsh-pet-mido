@@ -72,7 +72,7 @@ app.setName('dsh-pet-electron-helper');
 // Windows 任务栏分组：不设 AppUserModelID 时窗口归到 electron.exe 名下，任务栏按钮意外出现就显示
 // Electron 默认图标。必须在 ready 之前调用；独立应用与 DSH 内 helper 用不同 ID，避免被合成一组。
 if (process.platform === 'win32') {
-  app.setAppUserModelId(APP_MODE ? 'com.dsh.pet.app' : 'com.dsh.pet.helper');
+  app.setAppUserModelId(APP_MODE ? 'com.mido.pet.app' : 'com.dsh.pet.helper');
 }
 // 应用模式只改数据目录、不改应用名：共用同一个 userData 时两个 Chromium 进程会抢同一份 profile 互踢。
 if (APP_MODE) app.setPath('userData', path.join(app.getPath('appData'), 'dsh-pet'));
@@ -248,6 +248,17 @@ if (process.env.DSH_PET_IN_PROCESS === '1') {
     petWindows.closeAll();
     petWindows.create();
     await tray.refresh();
+  };
+  globalThis.__dshPetRetargetHost = async () => {
+    // 配置地址、打开目标与连接状态已由应用主进程写进环境变量；这里只重建窗口，不新开进程。
+    petWindows.closeAll();
+    petWindows.create();
+    await tray.refresh();
+  };
+  globalThis.__dshPetFocusWindows = () => {
+    for (const win of petWindows.state.windows.values()) {
+      if (!win.isDestroyed()) win.showInactive();
+    }
   };
 }
 

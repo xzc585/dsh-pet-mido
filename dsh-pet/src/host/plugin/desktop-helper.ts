@@ -5,6 +5,7 @@
  * 必须始终成立：requestRestart 是唯一的重启入口，内部串行且不重叠。
  * @module dsh-pet/src/host/plugin/desktop-helper
  */
+import { createAttachHost } from './desktop/attach-host.ts';
 import { createDesktopPets } from './desktop/pets.ts';
 import { createDesktopSpawn } from './desktop/spawn.ts';
 import { createDesktopSync } from './desktop/sync.ts';
@@ -20,14 +21,37 @@ export type { DesktopHelperDeps };
 export function createDesktopHelper(deps: DesktopHelperDeps) {
   const pets = createDesktopPets(deps);
   const spawn = createDesktopSpawn({ ...deps, ...pets });
-  const sync = createDesktopSync({ ...deps, ...pets, ...spawn });
+  const attach = createAttachHost({
+    ...deps,
+    ...pets,
+    stopHelper: () => spawn.stopHelper('standalone-attached'),
+  });
+  const startHelper = (): void => {
+    // 先开放本机接入服务并写入发现文件，独立入口才能连上；再决定要不要自己拉 Helper。
+    attach.start();
+    if (attach.hasLiveStandalone()) {
+      deps.log.info(
+        '[dsh-pet] 米豆独立入口已在桌面上运行，不再拉起第二只桌面宠物；宿主能力会交给那只已有的米豆',
+      );
+      return;
+    }
+    spawn.startHelper();
+  };
+  const stopHelper = (reason = 'settings-change'): void => {
+    spawn.stopHelper(reason);
+  };
+  const markDisposed = (): void => {
+    attach.stop();
+    spawn.markDisposed();
+  };
+  const sync = createDesktopSync({ ...deps, ...pets, ...spawn, startHelper, stopHelperAndWait: spawn.stopHelperAndWait });
   return {
-    startHelper: spawn.startHelper,
-    stopHelper: spawn.stopHelper,
+    startHelper,
+    stopHelper,
     requestRestart: sync.requestRestart,
     assetRootFor: spawn.assetRootFor,
     userRootFor: spawn.userRootFor,
-    markDisposed: spawn.markDisposed,
+    markDisposed,
   };
 }
 

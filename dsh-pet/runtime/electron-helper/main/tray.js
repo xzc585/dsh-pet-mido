@@ -117,6 +117,27 @@ function createTray({
         console.error('[dsh-pet-desktop-helper] tray quit failed:', String(e && e.message ? e.message : e));
       });
     };
+    const connectItems =
+      appMode
+        ? [
+            { type: 'separator' },
+            process.env.DSH_PET_DSH_CONNECTED === '1'
+              ? {
+                  label: '断开 DeepSeek Harness',
+                  click: () => {
+                    const hook = globalThis.__dshPetDisconnectDsh;
+                    if (typeof hook === 'function') void hook();
+                  },
+                }
+              : {
+                  label: '连接 DeepSeek Harness',
+                  click: () => {
+                    const hook = globalThis.__dshPetConnectDsh;
+                    if (typeof hook === 'function') void hook();
+                  },
+                },
+          ]
+        : [];
     return Menu.buildFromTemplate([
       ...pets.map((pet) => ({
         label: pet.name || pet.id,
@@ -124,6 +145,7 @@ function createTray({
         checked: isDesktopDisplay(pet.display),
         click: () => traySetPetDisplay(pet.id, toggleDisplay(pet.display)),
       })),
+      ...connectItems,
       ...(canQuit ? [{ type: 'separator' }, { label: '退出', click: quitApp }] : []),
     ]);
   }
@@ -141,7 +163,14 @@ function createTray({
       const menu = await buildMenu();
       if (menu === null) return;
       tray = new Tray(trayIcon());
-      tray.setToolTip('dsh-pet 桌面宠物');
+      tray.setToolTip(
+        process.env.DSH_PET_APP_MODE === '1'
+          ? process.env.DSH_PET_DSH_CONNECTED === '1'
+            ? '米豆 · 已连接 DeepSeek Harness'
+            : '米豆 · 独立运行'
+          : '米豆桌面宠物',
+      );
+
       tray.setContextMenu(menu);
       // Windows 上 setContextMenu 只接管右键，左键默认什么都不做（macOS 相反：左键即弹菜单）
       if (platform.leftClickPopsMenu) tray.on('click', () => tray.popUpContextMenu());

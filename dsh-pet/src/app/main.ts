@@ -20,9 +20,9 @@ import { createStandaloneContext, type RegisteredRoute } from '../standalone/con
 import { configPathsFor } from '../standalone/options.ts';
 import { createRequestSecurity } from '../standalone/request-security.ts';
 
-import { installDesktopAuth, type DesktopSession } from './desktop-auth.ts';
+import { installDesktopAuth, type DesktopAuthHandle, type DesktopSession } from './desktop-auth.ts';
 import { startRouter } from './router.ts';
-import { ROUTE_SEGMENT } from '../shared/constants.ts';
+import { createDshConnect, type RetargetSession } from './dsh-connect.ts';
 
 /**
  * `electron` 由 Electron 运行时提供，不是本包依赖；只声明实际用到的成员。
@@ -113,22 +113,53 @@ async function boot(): Promise<void> {
     authenticatedUrl: security.authenticatedUrl,
   });
 
-  const server = await startRouter(routes, { security, ai, log, status, landingPage });
+  let authHandle: DesktopAuthHandle | undefined;
+  const applySessionEnv = (session: RetargetSession): void => {
+    process.env.DSH_PET_CONFIG_URL = session.configUrl;
+    process.env.DSH_PET_SITE_URL = session.siteUrl;
+    process.env.DSH_PET_OPEN_TARGET = session.openTarget;
+    process.env.DSH_PET_DSH_CONNECTED = session.connected ? '1' : '0';
+  };
+  const connect = createDshConnect({
+    dshHome: dshHomeDir(),
+    localOrigin: () => (port ? `http://127.0.0.1:${port}` : ''),
+    localToken: () => security.token,
+    localSiteUrl: () => security.authenticatedUrl(`http://127.0.0.1:${port}`),
+    version: packageVersion(packageRoot),
+    log,
+    retarget: async (session) => {
+      applySessionEnv(session);
+      try {
+        authHandle?.update(new URL(session.configUrl).origin, session.token);
+      } catch {
+        /* 配置地址不合法时不更新注入，retarget 钩子仍会按新地址建窗 */
+      }
+      const hook = (globalThis as { __dshPetRetargetHost?: (next: RetargetSession) => Promise<void> })
+        .__dshPetRetargetHost;
+      if (hook) await hook(session);
+    },
+  });
+
+  const server = await startRouter(routes, { security, ai, log, status, landingPage, connect });
   port = server.port;
   const origin = `http://127.0.0.1:${port}`;
   log(`本机服务 ${origin}`);
+  connect.start();
+  (globalThis as { __dshPetConnectDsh?: () => ReturnType<typeof connect.connect> }).__dshPetConnectDsh = () =>
+    connect.connect();
+  (globalThis as { __dshPetDisconnectDsh?: () => ReturnType<typeof connect.disconnect> }).__dshPetDisconnectDsh = () =>
+    connect.disconnect();
 
   // 先把「我自己就是应用」告诉插件，再 apply：apply 内部据此短路 spawn 与下载
   process.env.DSH_PET_IN_PROCESS = '1';
   process.env.DSH_PET_APP_MODE = '1';
-  // 独立模式点首项打开的是本机 AI 设置页，不是 DSH 站点：形态必须显式标成 standalone。
-  process.env.DSH_PET_OPEN_TARGET = 'standalone';
   // 不注入宿主 PID：helper 的「宿主没了就退出」只对双进程有意义，同进程里设了会自己杀自己
   delete process.env.DSH_PET_HOST_PID;
-  process.env.DSH_PET_CONFIG_URL = `${origin}${ROUTE_SEGMENT}/config`;
-  // 右键「打开 AI 设置」用它：带令牌的配置页（与 CLI 行为一致）。裸 origin 在应用里没有页面可看。
-  process.env.DSH_PET_SITE_URL = security.authenticatedUrl(origin);
   if (!process.env.DSH_PET_SCALE) process.env.DSH_PET_SCALE = '1';
+  // 若 DSH 里的插件已经开放接入服务，启动时直接接到宿主，避免先画一只再切、或与插件 Helper 重叠。
+  const bootSession = await connect.bootSession();
+  applySessionEnv(bootSession);
+  log(bootSession.connected ? '启动时已连接到 DeepSeek Harness' : '启动为独立运行（未连接 DSH）');
 
   apply(context.ctx);
   log(`apply() 完成：routes=${routes.length} 失败=${context.failures.length}`);
@@ -145,23 +176,35 @@ async function boot(): Promise<void> {
   });
   // 必须早于 Helper 的 whenReady 回调建出 file 渲染页。
   void app.whenReady().then(() => {
-    installDesktopAuth(
+    const sessionNow = connect.currentSession();
+    let authOrigin = origin;
+    try {
+      authOrigin = new URL(sessionNow.configUrl).origin;
+    } catch {
+      /* 回落本机 origin */
+    }
+    authHandle = installDesktopAuth(
       session.defaultSession,
-      origin,
+      authOrigin,
       join(packageRoot, 'runtime/electron-helper/index.html'),
-      security.token,
+      sessionNow.token,
     );
   });
-  process.env.DSH_PET_APP_TOKEN = security.token;
+  process.env.DSH_PET_APP_TOKEN = bootSession.token;
   try {
     createRequire(import.meta.url)(helperMain);
   } finally {
     delete process.env.DSH_PET_APP_TOKEN;
   }
+  connect.markHelperReady();
 
-  app.on('second-instance', () => log('已有一个实例在运行，忽略本次启动'));
+  app.on('second-instance', () => {
+    log('已有一个实例在运行，忽略本次启动');
+    (globalThis as { __dshPetFocusWindows?: () => void }).__dshPetFocusWindows?.();
+  });
   app.on('will-quit', () => {
     // 退出前把最后一批日志刷出去（定时器最多 1s，这里显式补一次）
+    connect.dispose();
     void logger.flush();
     logger.dispose();
     void ai.dispose();
@@ -199,6 +242,7 @@ function status(port: number): Record<string, unknown> {
   }
   return {
     name: 'dsh-pet-app',
+    entry: 'mido-standalone',
     version: packageVersion(packageRoot),
     pid: process.pid,
     port,
@@ -218,7 +262,7 @@ function landingPage(port: number): string {
         .join('')
     : '<li>（未读到宠物，检查配置文件）</li>';
   return `<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><title>dsh-pet</title>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>米豆</title>
 <style>
   body{font:14px/1.7 "Segoe UI",system-ui,sans-serif;margin:0;padding:32px;background:#f6f8fa;color:#1f2328}
   main{max-width:720px;margin:0 auto;background:#fff;border:1px solid #d0d7de;border-radius:12px;padding:28px 32px}
@@ -227,14 +271,14 @@ function landingPage(port: number): string {
   ul{margin:6px 0;padding-left:20px} a{color:#0969da}
 </style></head>
 <body><main>
-  <h1>dsh-pet 桌宠</h1>
+  <h1>米豆桌宠</h1>
   <div class="sub">版本 ${escapeHtml(String(info.version))} · 端口 ${port}</div>
   <h2>宠物</h2><ul>${petLines}</ul>
   <h2>配置文件</h2>
   <p><code>${escapeHtml(String(info.configFile))}</code></p>
   <p>改完配置后从托盘退出、重新打开应用即可生效（本模式没有「重载配置」菜单）。</p>
-  <h2>AI 设置</h2>
-  <p>AI 模型与密钥的配置页需要令牌，请<strong>右键桌宠 →「打开 AI 设置」</strong>，会直接打开已授权的页面。</p>
+  <h2>AI 设置与连接 DSH</h2>
+  <p>未连接 DeepSeek Harness 时，请<strong>右键米豆 →「打开 AI 设置」</strong>打开本机设置（含系统内存清理）。打开 DSH 后会自动连接；也可以右键选择「连接 DeepSeek Harness」。连上之后，同一只米豆会使用宿主的聊天、任务状态和配图，右键首项变为「打开软件」。</p>
   <h2>状态</h2>
   <p><a href="/health">/health</a> · <a href="/standalone-ai/">配置页（未授权时读写会返回 403）</a></p>
 </main></body></html>`;

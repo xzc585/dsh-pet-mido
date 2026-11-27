@@ -59,3 +59,8 @@ tools/mido-ram-cleaner/dist/
 !tools/mido-ram-cleaner/dist/mido-ram-cleaner.exe
 !dsh-pet/assets/tools/
 !dsh-pet/assets/tools/mido-ram-cleaner.exe
+
+# ── 米豆独立入口（默认忽略交叉编译产物；发布用 exe 单独跟踪）──
+tools/mido/dist/
+!tools/mido/dist/
+!tools/mido/dist/mido.exe

@@ -34,6 +34,15 @@ dsh plugin --profile desktop add file:C:\path\to\dsh-pet-mido\dsh-pet
 
 不要执行 `npm install dsh-pet`、`npm install -g dsh-pet`，也不要在「插件管理」里只填包名 `dsh-pet`。
 
+## 独立入口（不必先开 DSH）
+
+也可以双击桌面上的 **`mido.exe`**，不启动 DeepSeek Harness 就把米豆放到桌面上。右键米豆可以打开设置（含系统内存清理）。
+
+当你随后打开 DeepSeek Harness（desktop 配置）时，**同一只**米豆会自动连上宿主，使用聊天、任务状态和配图等能力，而不会再出现第二只宠物。连不上时，右键或托盘里选「连接 DeepSeek Harness」，设置页「配置」里也有同一张卡。失败会给出中文说明。
+
+`mido.exe` 会复用桌面上已安装的 `dsh-pet` 插件目录（动画和配置都在那里），以及 `%USERPROFILE%\.dsh\electron` 里的桌面运行时。不要用它覆盖 `mido-ram-cleaner.exe`。构建与路径说明见 [tools/mido/README.md](tools/mido/README.md)。
+
+
 ## 插件里的「清理缓存」
 
 插件设置页已有「清理缓存」（原先叫「清理内存」），默认是开着的。它清的是插件自己的素材缓存，不是系统内存。配置写在用户层 `main-config.jsonc` 顶层的 `memoryCleanup`：

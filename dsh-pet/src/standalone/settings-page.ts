@@ -20,6 +20,7 @@ import { DEFAULT_WEIGHTS } from '../shared/weights.ts';
 import { aiScript } from './settings-page/script/ai.ts';
 import { avatarScript } from './settings-page/script/avatar.ts';
 import { bootScript } from './settings-page/script/boot.ts';
+import { dshConnectScript } from './settings-page/script/dsh-connect.ts';
 import { coreScript } from './settings-page/script/core.ts';
 import { globalsScript } from './settings-page/script/globals.ts';
 import { modelPickerScript } from './settings-page/script/model-picker.ts';
@@ -62,7 +63,9 @@ export const settingsScript = [
   globalsScript(),
   modelPickerScript(),
   aiScript(),
+  dshConnectScript(),
   bootScript(),
   'boot();',
+  'wireDshConnect();',
   '})();',
 ].join('\n');

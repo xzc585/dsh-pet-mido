@@ -288,7 +288,9 @@ function createWindows({
     return {
       configUrl: process.env.DSH_PET_CONFIG_URL || 'http://127.0.0.1:3080/dsh-pet-7340/config',
       bridge: isBridge ? '1' : '0',
-      openTarget,
+      openTarget: process.env.DSH_PET_OPEN_TARGET || openTarget,
+      appMode: process.env.DSH_PET_APP_MODE === '1' ? '1' : '0',
+      dshConnected: process.env.DSH_PET_DSH_CONNECTED === '1' ? '1' : '0',
       scale: String(scale),
       petIndex: String(pet.index),
       workAreaW: String(geo.hull.width),

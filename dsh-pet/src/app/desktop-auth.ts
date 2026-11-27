@@ -29,6 +29,12 @@ export interface DesktopSession {
   };
 }
 
+/** 桌面鉴权注入的句柄：连接 DSH 时要换成插件接入 origin 与令牌。 */
+export interface DesktopAuthHandle {
+  /** 更新出站请求要携带的 origin 与令牌。 */
+  update(nextOrigin: string, nextToken: string): void;
+}
+
 /**
  * 为本机顶层 file 渲染端访问插件路由的请求附加访问令牌。
  *
@@ -40,31 +46,46 @@ export interface DesktopSession {
  * @param rendererPath - 桌面 Helper 渲染页绝对路径。
  * @param token - 访问令牌。
  */
-export function installDesktopAuth(session: DesktopSession, origin: string, rendererPath: string, token: string): void {
+export function installDesktopAuth(
+  session: DesktopSession,
+  origin: string,
+  rendererPath: string,
+  token: string,
+): DesktopAuthHandle {
   const renderer = pathToFileURL(rendererPath).href;
+  let currentOrigin = origin;
+  let currentToken = token;
   session.webRequest.onBeforeSendHeaders((details, callback) => {
     const headers = { ...details.requestHeaders };
     // 重定向后的请求不得把凭证带去别的目标。
     for (const name of Object.keys(headers)) {
-      if (name.toLowerCase() === 'x-dsh-pet-token') delete headers[name];
+      const key = name.toLowerCase();
+      if (key === 'x-dsh-pet-token' || key === 'x-mido-attach-token') delete headers[name];
     }
     try {
       const target = new URL(details.url);
       const frame = details.frame;
       const page = frame ? new URL(frame.url) : undefined;
       if (
-        target.origin === origin &&
+        target.origin === currentOrigin &&
         target.pathname.startsWith(ROUTE_SEGMENT + '/') &&
         frame?.parent === null &&
         page?.protocol === 'file:' &&
         page.origin === 'null' &&
         page.href.split(/[?#]/, 1)[0] === renderer
       ) {
-        headers['X-DSH-Pet-Token'] = token;
+        headers['X-DSH-Pet-Token'] = currentToken;
+        headers['X-Mido-Attach-Token'] = currentToken;
       }
     } catch {
       // frame 缺失/已销毁或地址非法时，一律不授予凭证。
     }
     callback({ requestHeaders: headers });
   });
+  return {
+    update(nextOrigin, nextToken) {
+      currentOrigin = nextOrigin;
+      currentToken = nextToken;
+    },
+  };
 }

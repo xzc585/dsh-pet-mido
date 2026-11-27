@@ -18,6 +18,7 @@ const { decideWindowIgnore } = require('../pointer-target.js');
  * @param deps.petRoute - 宠物路由前缀。
  */
 function registerIpc({ ipcMain, petWindows, shell, openTarget, petRoute }) {
+  const currentOpenTarget = () => process.env.DSH_PET_OPEN_TARGET || openTarget;
   // 宠物窗口跟随：renderer 逐帧上报窗口内容区位置/尺寸
   ipcMain.on('pet:set-bounds', (event, bounds) => {
     const win = BrowserWindow.fromWebContents(event.sender);
@@ -159,7 +160,7 @@ function registerIpc({ ipcMain, petWindows, shell, openTarget, petRoute }) {
   ipcMain.on('pet:open-site', (event, payload) => {
     const url = payload && typeof payload === 'object' ? String(payload.url || '') : '';
     if (!/^https?:[/][/]/.test(url)) return;
-    if (openTarget === 'desktop') {
+    if (currentOpenTarget() === 'desktop') {
       // 协议未注册（绿色版 / 注册表被清）时回落成打开站点，至少不是"点了没反应"
       focusDesktopApp().catch((error) => {
         console.error('[dsh-pet-desktop-helper] open dsh:// failed, falling back to site:', error);
@@ -172,7 +173,7 @@ function registerIpc({ ipcMain, petWindows, shell, openTarget, petRoute }) {
 
   // 只叫窗口、不改去向：被别的窗口挡住时把主窗口提到前台。
   ipcMain.on('pet:focus-host', () => {
-    if (openTarget !== 'desktop') return;
+    if (currentOpenTarget() !== 'desktop') return;
     focusDesktopApp().catch((error) => {
       console.warn('[dsh-pet-desktop-helper] focus host failed:', error && error.message);
     });
@@ -199,6 +200,20 @@ function registerIpc({ ipcMain, petWindows, shell, openTarget, petRoute }) {
     const data = thumbnail.toJPEG(85).toString('base64');
     return { mediaType: 'image/jpeg', data, width, height, bytes: Math.floor((data.length * 3) / 4) };
   });
+
+  // 独立入口：手动连接 / 断开 DeepSeek Harness。结果由应用主进程返回中文说明，失败不得静默。
+  const runConnect = (name) => {
+    const hook = globalThis[name];
+    if (typeof hook !== 'function') {
+      return Promise.resolve({
+        ok: false,
+        message: '当前不是米豆独立入口，无法从这里连接 DeepSeek Harness。',
+      });
+    }
+    return Promise.resolve(hook());
+  };
+  ipcMain.handle('pet:dsh-connect', () => runConnect('__dshPetConnectDsh'));
+  ipcMain.handle('pet:dsh-disconnect', () => runConnect('__dshPetDisconnectDsh'));
 }
 
 module.exports = { registerIpc };

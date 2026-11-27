@@ -89,6 +89,14 @@ README 的「插件功能」只列能力清单，这里把这六项展开说。
 
 本衍生版附带独立 pet pack「米豆」（种类 id：`dog`）。形象是毛茸茸的乳白/奶油色三维小狗（浅金耳朵、大而圆的棕色眼睛、吐舌微笑），不是平涂、简笔卡通或像素侧视狗。配置、动画池与素材都在自己的种类文件里，**不会**回落到 `main-animation`。睡觉动画按起始 / 循环 / 结束三段安排。生成与安装说明见 [dsh-pet/assets/pet-packs/dog/README.md](dsh-pet/assets/pet-packs/dog/README.md)。
 
+## 🚪 独立入口（mido.exe）
+
+不必先启动 DeepSeek Harness。双击桌面上的 `mido.exe`，米豆会以透明窗出现在桌面上，可待机、走动，右键打开设置（含系统内存清理）。
+
+随后打开 DSH（desktop 配置）时，同一只米豆会自动连接宿主，使用聊天、任务状态和配图；也可以在右键菜单、托盘或设置页里手动连接。连上后不会再出现第二只桌面宠物。失败会显示中文原因。
+
+这不是 DSH 官方提供的 attach API。连接依据是本仓库的本机发现协议：插件在 `$DSH_HOME/dsh-pet/mido-dsh-host.json` 写出一个只绑 127.0.0.1 的接入服务，独立入口在同目录写下 `mido-standalone.json`。发现文件不含 DSH 登录令牌。详见 [tools/mido/README.md](tools/mido/README.md)。
+
 ## 下一步
 
 - 改配置（大小 / 位置 / 多开 / 物理 / 模型 / 人设 / 宠物种类）：见 [CONFIG.md](CONFIG.md)
