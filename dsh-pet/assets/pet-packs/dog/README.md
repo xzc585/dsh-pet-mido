@@ -1,0 +1,29 @@
+# 米豆（dog）
+
+这是本衍生项目附带的**原创**小狗宠物种类，和默认条目里的「大肥鱼 / 鲸鱼娘」形象无关。大肥鱼形象遵循 CC BY-NC-SA，本种类没有复制或改画该形象。
+
+形象是一只毛茸茸的乳白/奶油色三维小狗：浅棕/金色耳朵、又大又圆的棕色眼睛、棕色鼻子，常常张嘴吐舌微笑。立绘与动画按官方参照图与同一只狗的姿势底板制作，是带毛发质感的精致三维画风，不是平涂线稿、简笔卡通或像素侧视狗。
+
+- 种类 id：`dog`
+- 显示名：米豆
+- 配置：`dog-config.json`
+- 动画目录：`dog-animation/`（透明 VP9 `.webm`，按文件名与配置中的动画名对应）
+- 立绘：`dog-character.png`
+- 预览：`preview.gif`
+
+安装后，首次启动宿主会把本目录复制到 `$DSH_HOME/dsh-pet/pet/`（已有 `dog-config.json` 时不覆盖）。也可手工复制：
+
+```bash
+mkdir -p "$DSH_HOME/dsh-pet/pet"
+cp dog-config.json "$DSH_HOME/dsh-pet/pet/"
+cp dog-character.png "$DSH_HOME/dsh-pet/pet/"
+cp -R dog-animation "$DSH_HOME/dsh-pet/pet/"
+```
+
+重新生成动画（需 Python 3、Pillow、numpy、ffmpeg，且 ffmpeg 带 libvpx-vp9）。姿势底板放在 `dsh-pet/scripts/dog-source/`（`mido-reference.png` 与各姿势底板）：
+
+```bash
+python3 scripts/generate-dog-pet.py
+```
+
+本种类的代码与配置沿用 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 的 MIT 协议与二次创作约定。

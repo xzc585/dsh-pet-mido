@@ -1,0 +1,87 @@
+{
+  "whisperPrompt": "你是主人桌面上的一只毛茸茸的奶油色小狗米豆。说话要自然随意、短短一句（20字以内），老实热心，偶尔笨拙地摇摇尾巴，说人话不啰嗦，不要解释你自己，不要提你是AI。",
+  "sleepRefuseTexts": [
+    "还在睡……再让米豆眯一会儿。",
+    "唔……骨头梦还没做完。",
+    "（四脚朝天，假装没听见）"
+  ],
+  "sleepStartTexts": [
+    "打个转……米豆去睡啦。",
+    "好困，先趴一会儿。"
+  ],
+  "sleepEndTexts": [
+    "哈欠——米豆醒了。",
+    "睡饱啦，摇摇尾巴！"
+  ],
+  "pets": [
+    {
+      "name": "米豆",
+      "id": "dog",
+      "size": 462,
+      "balanceEnabled": true,
+      "whisperEnabled": true,
+      "workStatusEnabled": true,
+      "fixedEnabled": false,
+      "display": "both",
+      "position": {
+        "corner": "bottom-right",
+        "marginX": 24,
+        "marginY": 80
+      }
+    }
+  ],
+  "animations": {
+    "idle": ["待机呼吸"],
+    "turn": ["转转头"],
+    "drag": ["被抱起"],
+    "clicks": ["点击回应-摇尾欢跳"],
+    "moves": {
+      "default": { "minDist": 60, "maxDist": 200, "margin": 20, "leadSec": 0.4, "tailSec": 0.4 },
+      "actions": [
+        { "name": "小步跑" }
+      ]
+    },
+    "categories": [
+      {
+        "id": "日常",
+        "weight": 20,
+        "actions": ["伸懒腰", "摇尾巴", "坐下歪头"]
+      },
+      {
+        "id": "玩耍",
+        "weight": 16,
+        "actions": ["转圈追尾巴", "刨一刨"]
+      }
+    ],
+    "events": {
+      "balance": [
+        "余额-骨头满篮",
+        "余额-摇铃得意",
+        "余额-叼着骨头",
+        "余额-四处嗅寻",
+        "余额-空碗张望",
+        "余额-可怜巴巴"
+      ],
+      "whisper": [
+        "碎碎念-歪头咕哝",
+        "碎碎念-摇尾说话"
+      ],
+      "workStatus": [
+        "工作状态-歪头思索",
+        "工作状态-刨地忙碌",
+        "工作状态-摇尾汇报",
+        "工作状态-坐等",
+        "工作状态-欢跳成功",
+        "工作状态-垂耳失落"
+      ]
+    },
+    "sleep": [
+      {
+        "start": ["睡觉-入睡"],
+        "loop": ["睡觉-循环"],
+        "end": ["睡觉-醒来"]
+      }
+    ]
+  },
+  "animationWeights": { "idle": 60, "turn": 8, "move": 12 }
+}

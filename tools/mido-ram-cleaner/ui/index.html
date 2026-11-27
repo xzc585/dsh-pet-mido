@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>米豆系统内存清理</title>
+  <style>
+    :root {
+      --bg: #f3eee6;
+      --bg-2: #efe6d8;
+      --card: #fffaf3;
+      --ink: #3a3228;
+      --muted: #7a6e60;
+      --line: #e4d8c6;
+      --accent: #b6894c;
+      --accent-ink: #fffaf3;
+      --ok: #5d7a52;
+      --warn: #a86a3a;
+      --danger: #9a4a3c;
+      --shadow: 0 18px 40px rgba(80, 58, 30, 0.08);
+      --radius: 20px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+    body {
+      font: 15px/1.55 "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+      min-height: 100vh;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 28px 22px 48px; }
+    header h1 {
+      font-size: 22px;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+      margin: 0 0 6px;
+    }
+    header p { margin: 0; color: var(--muted); font-size: 13.5px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 22px 22px 20px;
+      margin-top: 18px;
+    }
+    .meter {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 22px;
+      align-items: center;
+    }
+    .ring {
+      width: 160px; height: 160px; position: relative;
+    }
+    .ring svg { transform: rotate(-90deg); width: 160px; height: 160px; }
+    .ring .track { fill: none; stroke: var(--bg-2); stroke-width: 12; }
+    .ring .value { fill: none; stroke: var(--accent); stroke-width: 12; stroke-linecap: round; transition: stroke-dashoffset .4s ease, stroke .3s ease; }
+    .ring .center {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .ring .center strong { font-size: 34px; font-weight: 650; line-height: 1; }
+    .ring .center span { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .stat {
+      background: var(--bg);
+      border-radius: 14px;
+      padding: 12px 12px 11px;
+    }
+    .stat label { display: block; color: var(--muted); font-size: 12px; }
+    .stat b { display: block; font-size: 18px; font-weight: 650; margin-top: 2px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 14px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--bg-2);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .badge.admin { background: #e8f0e3; color: var(--ok); }
+    h2 { font-size: 15px; margin: 0 0 14px; font-weight: 650; }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 140px;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .row label .hint { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
+    input[type="number"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 12px;
+      padding: 9px 12px;
+      font: inherit;
+      color: var(--ink);
+    }
+    input[type="number"]:focus { outline: 2px solid rgba(182, 137, 76, 0.35); border-color: var(--accent); }
+    .switch {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px; gap: 12px;
+    }
+    .toggle { position: relative; width: 44px; height: 26px; flex: 0 0 auto; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle span {
+      position: absolute; inset: 0; border-radius: 999px; background: #d7ccbe;
+      transition: .2s;
+    }
+    .toggle span::after {
+      content: ""; position: absolute; width: 20px; height: 20px; border-radius: 50%;
+      background: #fff; top: 3px; left: 3px; transition: .2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,.15);
+    }
+    .toggle input:checked + span { background: var(--accent); }
+    .toggle input:checked + span::after { transform: translateX(18px); }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 12px;
+      padding: 10px 16px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .55; cursor: default; }
+    .primary { background: var(--accent); color: var(--accent-ink); }
+    .primary:hover:not(:disabled) { filter: brightness(1.05); }
+    .ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+    .ghost:hover:not(:disabled) { background: var(--bg); }
+    .result, .note { color: var(--muted); font-size: 13px; margin: 14px 0 0; }
+    .result strong { color: var(--ink); font-weight: 650; }
+    .err { color: var(--danger); }
+    footer { margin-top: 16px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+    @media (max-width: 640px) {
+      .meter { grid-template-columns: 1fr; justify-items: center; }
+      .stats { width: 100%; }
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>米豆系统内存清理</h1>
+      <p>监视整机物理内存，回收可释放的工作集与待机列表。不会结束其他程序。</p>
+    </header>
+
+    <section class="card">
+      <div class="meter">
+        <div class="ring">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="track" cx="60" cy="60" r="50"></circle>
+            <circle class="value" id="arc" cx="60" cy="60" r="50"
+              stroke-dasharray="314.16" stroke-dashoffset="314.16"></circle>
+          </svg>
+          <div class="center">
+            <strong id="pct">--%</strong>
+            <span>物理内存已用</span>
+          </div>
+        </div>
+        <div>
+          <div class="stats">
+            <div class="stat"><label>已用</label><b id="used">--</b></div>
+            <div class="stat"><label>可用</label><b id="avail">--</b></div>
+            <div class="stat"><label>总共</label><b id="total">--</b></div>
+          </div>
+          <div class="badge" id="priv">正在读取权限…</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>设置</h2>
+      <form id="form">
+        <div class="switch">
+          <div>
+            <strong>启用自动清理</strong>
+            <div class="hint" style="color:var(--muted);font-size:12px;">到达定时间隔，或占用超过阈值时执行；受最短间隔限制。</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="autoClean" checked><span></span></label>
+        </div>
+        <div class="row">
+          <label>定时间隔<span class="hint">从上次清理或程序启动起算，单位秒</span></label>
+          <input type="number" id="intervalSec" min="30" max="86400" step="1" value="1800" required>
+        </div>
+        <div class="row">
+          <label>占用阈值<span class="hint">已用物理内存达到该百分比时提前清理</span></label>
+          <input type="number" id="thresholdPercent" min="50" max="99" step="1" value="85" required>
+        </div>
+        <div class="row">
+          <label>最短间隔<span class="hint">两次自动清理至少相隔多少秒，须不大于定时间隔</span></label>
+          <input type="number" id="debounceSec" min="10" max="86400" step="1" value="120" required>
+        </div>
+        <div class="actions">
+          <button type="submit" class="ghost" id="saveBtn">保存设置</button>
+          <button type="button" class="primary" id="cleanBtn">立即清理</button>
+          <button type="button" class="ghost" id="elevateBtn" hidden>以管理员身份完整清理一次</button>
+        </div>
+      </form>
+      <p class="result" id="msg"></p>
+    </section>
+
+    <footer>
+      收缩工作集或清空待机列表，通常只是把占用数字压下去；刚用过的页面还可能再从磁盘读回，不一定更流畅。
+      清空待机列表需要管理员权限，期间可能短暂卡顿。本工具不会结束其他程序。
+    </footer>
+  </div>
+  <script>
+    const CIRC = 2 * Math.PI * 50;
+    const $ = (id) => document.getElementById(id);
+    const fmt = (n) => {
+      const gb = n / (1024 * 1024 * 1024);
+      if (gb >= 10) return gb.toFixed(1) + " GB";
+      if (gb >= 1) return gb.toFixed(2) + " GB";
+      return (n / (1024 * 1024)).toFixed(0) + " MB";
+    };
+    const fmtTime = (iso) => {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toLocaleString("zh-CN", { hour12: false });
+    };
+    const setMsg = (text, isErr) => {
+      const el = $("msg");
+      el.textContent = text || "";
+      el.className = "result" + (isErr ? " err" : "");
+    };
+    const colorFor = (p) => p >= 90 ? "#9a4a3c" : p >= 80 ? "#a86a3a" : "#b6894c";
+
+    function applyStatus(s) {
+      const p = Math.max(0, Math.min(100, s.usedPercent || 0));
+      $("pct").textContent = p.toFixed(0) + "%";
+      $("used").textContent = fmt(s.usedBytes);
+      $("avail").textContent = fmt(s.availableBytes);
+      $("total").textContent = fmt(s.totalBytes);
+      const arc = $("arc");
+      arc.style.stroke = colorFor(p);
+      arc.setAttribute("stroke-dasharray", String(CIRC));
+      arc.setAttribute("stroke-dashoffset", String(CIRC * (1 - p / 100)));
+      const badge = $("priv");
+      badge.textContent = s.isAdmin ? "当前权限：管理员（可清空待机列表）" : "当前权限：标准用户（完整清理需要管理员）";
+      badge.className = "badge" + (s.isAdmin ? " admin" : "");
+      $("elevateBtn").hidden = !!s.isAdmin;
+      if (s.config) {
+        $("autoClean").checked = !!s.config.autoClean;
+        $("intervalSec").value = s.config.intervalSec;
+        $("thresholdPercent").value = s.config.thresholdPercent;
+        $("debounceSec").value = s.config.debounceSec;
+      }
+      if (s.lastClean) {
+        const c = s.lastClean;
+        const bits = [];
+        if (c.at) bits.push("上次清理：" + fmtTime(c.at));
+        if (c.before && c.after) {
+          bits.push("已用 " + c.before.usedPercent.toFixed(0) + "% → " + c.after.usedPercent.toFixed(0) + "%");
+        }
+        if (c.processesTrimmed >= 0) bits.push("已收缩 " + c.processesTrimmed + " 个进程的工作集");
+        if (c.standbyCleared) bits.push("已清空待机列表");
+        else if (c.standbySkipped) bits.push(c.standbySkipped);
+        if (c.error) bits.push(c.error);
+        setMsg(bits.join("。") + "。", !!c.error);
+      }
+    }
+
+    async function loadStatus() {
+      const r = await fetch("/api/status");
+      if (!r.ok) throw new Error("无法读取状态");
+      applyStatus(await r.json());
+    }
+
+    $("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const intervalSec = Number($("intervalSec").value);
+      const debounceSec = Number($("debounceSec").value);
+      const thresholdPercent = Number($("thresholdPercent").value);
+      if (debounceSec > intervalSec) {
+        setMsg("最短间隔不能大于定时间隔。", true);
+        return;
+      }
+      $("saveBtn").disabled = true;
+      try {
+        const r = await fetch("/api/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            autoClean: $("autoClean").checked,
+            intervalSec, thresholdPercent, debounceSec
+          })
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || "保存失败");
+        applyStatus(data);
+        setMsg("设置已保存。", false);
+      } catch (err) {
+        setMsg(err.message || "保存失败", true);
+      } finally {
+        $("saveBtn").disabled = false;
+      }
+    });
+
+    $("cleanBtn").addEventListener("click", async () => {
+      $("cleanBtn").disabled = true;
+      setMsg("正在清理…", false);
+      try {
+        const r = await fetch("/api/clean", { method: "POST" });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || "清理失败");
+        applyStatus(data);
+      } catch (err) {
+        setMsg(err.message || "清理失败", true);
+      } finally {
+        $("cleanBtn").disabled = false;
+      }
+    });
+
+    $("elevateBtn").addEventListener("click", async () => {
+      $("elevateBtn").disabled = true;
+      setMsg("正在请求管理员权限…", false);
+      try {
+        const r = await fetch("/api/clean-elevated", { method: "POST" });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || "未能完成完整清理");
+        if (data.message) setMsg(data.message, false);
+        else applyStatus(data);
+      } catch (err) {
+        setMsg(err.message || "未能请求管理员权限", true);
+      } finally {
+        $("elevateBtn").disabled = false;
+      }
+    });
+
+    loadStatus().catch((err) => setMsg(err.message, true));
+    setInterval(() => { loadStatus().catch(() => {}); }, 1000);
+  </script>
+</body>
+</html>
