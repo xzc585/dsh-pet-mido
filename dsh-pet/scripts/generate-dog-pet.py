@@ -27,6 +27,8 @@ OUT_DIR = ROOT / "assets" / "pet-packs" / "dog"
 ANIM_DIR = OUT_DIR / "dog-animation"
 W, H = 640, 360
 FPS = 12
+# 只提高通过对照的循环片段帧率，同时取消片尾重复的起始帧。
+SMOOTH_LOOP_RATES = {"待机呼吸": 24}
 GROUND = int(H * 0.88)
 
 # 各姿势在画布上的目标高度（相对 H），脚底对齐 GROUND。
@@ -604,25 +606,25 @@ ANIMATIONS: list[tuple[str, float, bool, object]] = [
 ]
 
 
-def sequence(bank: PoseBank, fn, seconds: float, loop: bool) -> list[Image.Image]:
-    n = max(2, int(round(seconds * FPS)))
+def sequence(bank: PoseBank, fn, seconds: float, loop: bool, *, fps: int = FPS, hold_first: bool = True) -> list[Image.Image]:
+    n = max(2, int(round(seconds * fps)))
     frames = []
     for i in range(n):
         t = i / n if loop else (i / (n - 1) if n > 1 else 0.0)
         frames.append(fn(bank, t))
-    if loop and frames:
+    if loop and hold_first:
         frames.append(frames[0].copy())
     return frames
 
 
-def encode_webm(frames: list[Image.Image], dest: Path) -> None:
+def encode_webm(frames: list[Image.Image], dest: Path, fps: int = FPS) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(prefix="dsh-dog-"))
     try:
         for i, im in enumerate(frames):
             im.save(tmp / f"{i:04d}.png")
         cmd = [
-            "ffmpeg", "-y", "-framerate", str(FPS), "-i", str(tmp / "%04d.png"),
+            "ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp / "%04d.png"),
             "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0",
             "-b:v", "900k", "-deadline", "good", "-cpu-used", "3", "-an", str(dest),
         ]
@@ -634,7 +636,7 @@ def encode_webm(frames: list[Image.Image], dest: Path) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def encode_gif(frames: list[Image.Image], dest: Path) -> None:
+def encode_gif(frames: list[Image.Image], dest: Path, fps: int = FPS) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(prefix="dsh-dog-gif-"))
     try:
@@ -645,7 +647,7 @@ def encode_gif(frames: list[Image.Image], dest: Path) -> None:
             "[s0]palettegen=reserve_transparent=1:stats_mode=single[p];"
             "[s1][p]paletteuse=new=1:alpha_threshold=128"
         )
-        cmd = ["ffmpeg", "-y", "-framerate", str(FPS), "-i", str(tmp / "%04d.png"), "-vf", filt, "-loop", "0", str(dest)]
+        cmd = ["ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp / "%04d.png"), "-vf", filt, "-loop", "0", str(dest)]
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if proc.returncode != 0:
             sys.stderr.write(proc.stderr[-2000:])
@@ -705,11 +707,12 @@ def main() -> None:
     preview_frames = None
     sleep_sets: dict[str, list[Image.Image]] = {}
     for name, seconds, loop, fn in ANIMATIONS:
-        frames = sequence(bank, fn, seconds, loop)
+        rate = SMOOTH_LOOP_RATES.get(name, FPS)
+        frames = sequence(bank, fn, seconds, loop, fps=rate, hold_first=name not in SMOOTH_LOOP_RATES)
         if name.startswith("睡觉-"):
             sleep_sets[name] = frames
         dest = ANIM_DIR / f"{name}.webm"
-        encode_webm(frames, dest)
+        encode_webm(frames, dest, rate)
         top = _opaque_top(frames[len(frames)//2])
         print(f"  {name}.webm  ({len(frames)} frames, {dest.stat().st_size} bytes, mid-top={top})", flush=True)
         if name == "待机呼吸":
@@ -737,7 +740,7 @@ def main() -> None:
             print("sleep start mid opaque alpha p50/p10:", int(np.median(op)), int(np.percentile(op, 10)))
 
     if preview_frames:
-        encode_gif(preview_frames, OUT_DIR / "preview.gif")
+        encode_gif(preview_frames, OUT_DIR / "preview.gif", SMOOTH_LOOP_RATES.get("待机呼吸", FPS))
         print("wrote preview.gif", flush=True)
     print("done", len(ANIMATIONS), "animations →", ANIM_DIR, flush=True)
 

@@ -8,6 +8,10 @@
 'use strict';
 
 Object.assign(PetSprite.prototype, {
+  animationUrl(name) {
+    return this.assetBase + encodeURIComponent(name) + (S.ANIMATION_EXT || '.webm');
+  },
+
   switchTo(next, nextOnce, playbackId, url) {
     if (!next) return;
     const pending = this.pending;
@@ -26,7 +30,7 @@ Object.assign(PetSprite.prototype, {
     const gen = ++this.gen;
     // 素材地址两条路：url 形态直接用第三方给的完整地址（宿主已把 scheme 卡在 http/https，
     // 不经 bridge、也不拼 BASE）；name 形态按「素材根 + 名字」拼。
-    el.src = url || this.assetBase + encodeURIComponent(next) + (S.ANIMATION_EXT || '.webm');
+    el.src = url || this.animationUrl(next);
     el.loop = !nextOnce;
     el.muted = true;
     el.autoplay = true;
@@ -266,6 +270,35 @@ Object.assign(PetSprite.prototype, {
   },
 
   // 动画链（纯逻辑在 shared）
+  replayEndedIdle(name) {
+    if (!name || name !== this.anim || this.pending || this.playback || this.pendingSquash) return false;
+    const el = this.front === 0 ? this.videoA : this.videoB;
+    if (
+      !el?.ended ||
+      el.loop ||
+      el.seeking ||
+      el.error ||
+      el.readyState < 2 ||
+      el.currentSrc !== this.animationUrl(name) ||
+      el.buffered.length === 0 ||
+      el.buffered.start(0) > 0
+    ) {
+      return false;
+    }
+    // 仍是一轮单次播放。播完继续掷骰，同片连播时省掉切槽和重新 load。
+    try {
+      el.currentTime = 0;
+    } catch {
+      return false;
+    }
+    el.style.transform = this.facing === 'right' ? 'scaleX(-1)' : '';
+    const gen = ++this.gen;
+    void el.play().catch(() => {
+      if (this.gen === gen && !this.frozen && !this.sleeping && !this.dragState.active) this.playOnce(name);
+    });
+    return true;
+  },
+
   playIdle() {
     // 占用锁：锁生效时不掷骰。这里是随机链的唯一入口（动画播完才会走到），一句判断就把随机动画、
     // 随机转向与自主走位一起停住——宠物停在最后一帧，等持锁者的下一条指令（走 /anim，不经这里）。
@@ -282,6 +315,7 @@ Object.assign(PetSprite.prototype, {
     let next;
     if (k === 'idle') {
       next = S.pick(animations.idle, this.anim);
+      if (this.replayEndedIdle(next)) return;
     } else if (k === 'turn') {
       next = S.pick(animations.turn, this.anim);
     } else if (k === 'move') {
