@@ -2657,7 +2657,7 @@ paths:
     post:
       tags: [Config]
       operationId: saveSystemMemoryConfig
-      summary: 更新 Windows 自动清理设置
+      summary: 更新 Windows 内存清理、占用显示和通知设置
       requestBody:
         required: true
         content:
@@ -3577,6 +3577,12 @@ components:
           type: number
         debounceSec:
           type: number
+        showUsage:
+          type: boolean
+          description: 是否在设置中显示当前内存占用。新配置默认打开，更新时省略则保留已有设置。
+        notifyOnClean:
+          type: boolean
+          description: 是否在清理完成后显示 Windows 通知。新配置默认关闭，更新时省略则保留已有设置。
 
     SystemMemoryStatus:
       type: object
@@ -3604,7 +3610,14 @@ components:
           $ref: "#/components/schemas/SystemMemoryConfig"
         lastClean:
           type: object
-          description: 最近一次成功取得的清理记录，可包含时间、前后占用和回收进程数。
+          description: 最近一次清理记录，可包含前后占用、回收进程数及失败原因。
+          properties:
+            at:
+              type: string
+              format: date-time
+            trigger:
+              type: string
+              enum: [auto, manual, elevated]
 
     OkResponse:
       type: object

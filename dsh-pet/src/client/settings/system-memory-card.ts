@@ -10,7 +10,7 @@ import { ROUTE_PATH } from '../../shared/constants.ts';
 import type { SettingsRuntime } from './runtime.ts';
 import { makeUiKit, numberInputProps } from './ui.ts';
 
-/** 系统内存卡自己的输入：保存中时只禁用按钮，不挡住轮询。 */
+/** 系统内存卡自己的输入。 */
 export interface SystemMemoryCardProps {
   /** 宠物配置正在保存时禁用操作，避免设置页整体忙碌时误点。 */
   readonly busy: boolean;
@@ -21,6 +21,8 @@ interface SystemMemoryConfig {
   intervalSec: number;
   thresholdPercent: number;
   debounceSec: number;
+  showUsage: boolean;
+  notifyOnClean: boolean;
 }
 
 interface MemorySnap {
@@ -32,6 +34,7 @@ interface MemorySnap {
 
 interface CleanReport {
   at?: string;
+  trigger?: 'auto' | 'manual' | 'elevated';
   standbyCleared?: boolean;
   before?: MemorySnap;
   after?: MemorySnap;
@@ -44,7 +47,7 @@ interface SystemMemoryStatus extends MemorySnap {
   reason?: string;
   message?: string;
   isAdmin?: boolean;
-  config?: SystemMemoryConfig;
+  config?: Partial<SystemMemoryConfig>;
   lastClean?: CleanReport;
 }
 
@@ -53,7 +56,15 @@ const DEFAULT_CONFIG: SystemMemoryConfig = {
   intervalSec: 1800,
   thresholdPercent: 85,
   debounceSec: 120,
+  showUsage: true,
+  notifyOnClean: false,
 };
+
+const CLEAN_TRIGGER_KEYS = {
+  auto: 'systemMemoryCleanAuto',
+  manual: 'systemMemoryCleanManual',
+  elevated: 'systemMemoryCleanElevated',
+} as const;
 
 async function requestSystemMemory(path: string, init?: RequestInit): Promise<SystemMemoryStatus> {
   const response = await fetch(ROUTE_PATH + path, {
@@ -62,7 +73,7 @@ async function requestSystemMemory(path: string, init?: RequestInit): Promise<Sy
   });
   const body = (await response.json().catch(() => null)) as SystemMemoryStatus | null;
   if (!body) return { ok: false, available: false, message: 'cleanupFailed' };
-  return body;
+  return response.ok ? body : { ...body, ok: false };
 }
 
 export async function fetchSystemMemoryStatus(): Promise<SystemMemoryStatus> {
@@ -99,6 +110,17 @@ function formatPercent(value: number | undefined): string {
   return String(Math.round(value * 10) / 10);
 }
 
+function formatMemoryReading(snapshot: MemorySnap): string {
+  const used = formatMemoryBytes(snapshot.usedBytes ?? NaN);
+  const percent = formatPercent(snapshot.usedPercent);
+  if (percent === '—') return used;
+  return used === '—' ? percent + '%' : `${used} (${percent}%)`;
+}
+
+function failed(status: SystemMemoryStatus): boolean {
+  return status.ok === false || status.available === false;
+}
+
 /**
  * 造系统内存清理卡。
  *
@@ -106,7 +128,7 @@ function formatPercent(value: number | undefined): string {
  * @returns 卡片组件。
  */
 export function makeSystemMemoryCard(rt: SettingsRuntime): FunctionComponent<SystemMemoryCardProps> {
-  const { h, t, useEffect, useState } = rt;
+  const { h, t, useEffect, useRef, useState } = rt;
   const { cardHead, field, toggleCell } = makeUiKit({ h, t });
 
   return function SystemMemoryCard(props: SystemMemoryCardProps) {
@@ -114,18 +136,19 @@ export function makeSystemMemoryCard(rt: SettingsRuntime): FunctionComponent<Sys
     const [config, setConfig] = useState<SystemMemoryConfig>(DEFAULT_CONFIG);
     const [busyAction, setBusyAction] = useState(false);
     const [feedback, setFeedback] = useState<{ kind: 'ok' | 'err' | ''; text: string }>({ kind: '', text: '' });
+    const operation = useRef({ generation: 0, busy: false });
 
     const applyStatus = (next: SystemMemoryStatus): void => {
       setStatus(next);
-      if (next.config) setConfig(next.config);
+      if (next.config) setConfig({ ...DEFAULT_CONFIG, ...next.config });
     };
 
     const showFeedback = (next: SystemMemoryStatus, okText?: string): void => {
-      if (next.message && next.ok !== false && next.available !== false) {
+      if (next.message && !failed(next)) {
         setFeedback({ kind: 'ok', text: next.message });
         return;
       }
-      if (next.ok === false || next.available === false) {
+      if (failed(next)) {
         const text =
           next.message && next.message !== 'cleanupFailed'
             ? next.message
@@ -142,13 +165,22 @@ export function makeSystemMemoryCard(rt: SettingsRuntime): FunctionComponent<Sys
 
     useEffect(() => {
       let alive = true;
+      let polling = false;
       const tick = (): void => {
+        if (operation.current.busy || polling) return;
+        polling = true;
+        const generation = operation.current.generation;
+        const current = (): boolean => alive && generation === operation.current.generation;
         void fetchSystemMemoryStatus()
           .then((next) => {
-            if (!alive) return;
-            applyStatus(next);
+            if (current()) applyStatus(next);
           })
-          .catch(() => undefined);
+          .catch(() => {
+            if (current()) applyStatus({ ok: false, available: false });
+          })
+          .finally(() => {
+            polling = false;
+          });
       };
       tick();
       const timer = setInterval(tick, 2000);
@@ -158,24 +190,39 @@ export function makeSystemMemoryCard(rt: SettingsRuntime): FunctionComponent<Sys
       };
     }, []);
 
+    const disabled = props.busy || busyAction || status == null || status.available === false;
+    const beginOperation = (): boolean => {
+      if (disabled || operation.current.busy) return false;
+      // Retire every poll started before this action, even if it returns after the save finishes.
+      operation.current.generation++;
+      operation.current.busy = true;
+      setBusyAction(true);
+      setFeedback({ kind: '', text: '' });
+      return true;
+    };
+
+    const endOperation = (): void => {
+      operation.current.busy = false;
+      setBusyAction(false);
+    };
+
     const patchConfig = (patch: Partial<SystemMemoryConfig>): void => {
+      if (!beginOperation()) return;
       const previous = config;
       const next: SystemMemoryConfig = { ...config, ...patch };
       if (next.debounceSec > next.intervalSec) next.debounceSec = next.intervalSec;
       setConfig(next);
-      setBusyAction(true);
       void (async () => {
         try {
           const result = await saveSystemMemoryConfig(next);
-          applyStatus(result);
+          if (failed(result)) setConfig(result.config ? { ...DEFAULT_CONFIG, ...result.config } : previous);
+          else applyStatus(result);
           showFeedback(result, t('systemMemorySaved'));
-          if (result.ok === false && result.config) setConfig(result.config);
-          else if (result.ok === false) setConfig(previous);
         } catch {
           setConfig(previous);
           setFeedback({ kind: 'err', text: t('systemMemorySaveFailed').replace('{error}', t('systemMemoryFailed')) });
         } finally {
-          setBusyAction(false);
+          endOperation();
         }
       })();
     };
@@ -183,39 +230,34 @@ export function makeSystemMemoryCard(rt: SettingsRuntime): FunctionComponent<Sys
     const lastCleanText = (report: CleanReport | undefined): string => {
       if (!report || !report.before || !report.after) return '';
       return (report.standbyCleared ? t('systemMemoryLastCleanAdmin') : t('systemMemoryLastClean'))
-        .replace(
-          '{before}',
-          formatMemoryBytes(report.before.usedBytes ?? 0) + '（' + formatPercent(report.before.usedPercent) + '%）',
-        )
-        .replace(
-          '{after}',
-          formatMemoryBytes(report.after.usedBytes ?? 0) + '（' + formatPercent(report.after.usedPercent) + '%）',
-        );
+        .replace('{before}', formatMemoryReading(report.before))
+        .replace('{after}', formatMemoryReading(report.after));
     };
 
     const run = (action: () => Promise<SystemMemoryStatus>, okText?: string): void => {
-      setBusyAction(true);
-      setFeedback({ kind: '', text: '' });
+      if (!beginOperation()) return;
       void (async () => {
         try {
           const result = await action();
-          applyStatus(result);
-          const done = lastCleanText(result.lastClean);
-          showFeedback(result, okText || done || t('systemMemoryDone'));
+          if (!failed(result) || result.lastClean) applyStatus(result);
+          const cleanError = !okText && result.lastClean?.error;
+          showFeedback(
+            cleanError ? { ...result, ok: false, message: cleanError } : result,
+            okText || t('systemMemoryDone'),
+          );
         } catch {
           setFeedback({ kind: 'err', text: t('systemMemoryFailed') });
         } finally {
-          setBusyAction(false);
+          endOperation();
         }
       })();
     };
 
     const unavailable = status != null && status.available === false;
-    const disabled = props.busy || busyAction || unavailable;
     const used = status?.usedBytes;
     const total = status?.totalBytes;
     const avail = status?.availableBytes;
-    const usageText =
+    const helperText =
       status == null
         ? t('systemMemoryHelperStarting')
         : unavailable
@@ -224,26 +266,55 @@ export function makeSystemMemoryCard(rt: SettingsRuntime): FunctionComponent<Sys
             : status.reason === 'helper-missing'
               ? t('systemMemoryMissing')
               : status.message || t('systemMemoryUnavailable')
-          : t('systemMemoryUsageValue')
-              .replace('{percent}', formatPercent(status.usedPercent))
-              .replace('{used}', typeof used === 'number' ? formatMemoryBytes(used) : '—')
-              .replace('{total}', typeof total === 'number' ? formatMemoryBytes(total) : '—')
-              .replace('{avail}', typeof avail === 'number' ? formatMemoryBytes(avail) : '—');
+          : '';
+    const usageText =
+      status && !unavailable && config.showUsage
+        ? t('systemMemoryUsage') +
+          '：' +
+          t('systemMemoryUsageValue')
+            .replace('{percent}', formatPercent(status.usedPercent))
+            .replace('{used}', formatMemoryBytes(used ?? NaN))
+            .replace('{total}', formatMemoryBytes(total ?? NaN))
+            .replace('{avail}', formatMemoryBytes(avail ?? NaN))
+        : '';
 
-    const lastText = lastCleanText(status?.lastClean);
+    const lastClean = status?.lastClean;
+    const lastText = lastCleanText(lastClean);
+    const triggerKey = lastClean?.trigger && CLEAN_TRIGGER_KEYS[lastClean.trigger];
+    const details = [triggerKey && t(triggerKey), lastText, lastClean?.error].filter(Boolean).join(' · ');
+    const at = new Date(lastClean?.at ?? '');
+    const timestamp = Number.isFinite(at.getTime())
+      ? h('time', { key: 'time', dateTime: at.toISOString(), children: at.toLocaleString() })
+      : null;
 
     return h('div', {
       className: 'dsh-pet-cfg__card',
+      'aria-busy': busyAction,
       children: [
         cardHead(t('systemMemoryTitle'), t('systemMemoryHint')),
-        h('p', {
-          className: 'dsh-pet-cfg__flabel',
-          children: t('systemMemoryUsage') + '：' + usageText,
-        }),
-        lastText ? h('p', { className: 'dsh-pet-cfg__flabel', children: lastText }) : null,
+        helperText || usageText
+          ? h('p', { className: 'dsh-pet-cfg__flabel', children: helperText || usageText })
+          : null,
+        timestamp || details
+          ? h('p', {
+              className: 'dsh-pet-cfg__flabel',
+              children: [
+                t('systemMemoryLastCleanHeading') + '：',
+                timestamp,
+                timestamp && details ? ' · ' : '',
+                details,
+              ],
+            })
+          : null,
         h('div', {
           className: 'dsh-pet-cfg__grid2',
           children: [
+            toggleCell('systemMemoryShowUsage', config.showUsage, disabled, (value) =>
+              patchConfig({ showUsage: value }),
+            ),
+            toggleCell('systemMemoryNotifyOnClean', config.notifyOnClean, disabled, (value) =>
+              patchConfig({ notifyOnClean: value }),
+            ),
             toggleCell('systemMemoryAuto', config.autoClean, disabled, (value) => patchConfig({ autoClean: value })),
             field(
               t('systemMemoryIntervalLabel'),
@@ -307,6 +378,7 @@ export function makeSystemMemoryCard(rt: SettingsRuntime): FunctionComponent<Sys
             feedback.text
               ? h('span', {
                   className: 'dsh-pet-cfg__msg' + (feedback.kind === 'err' ? ' is-err' : ''),
+                  role: 'status',
                   children: feedback.text,
                 })
               : null,

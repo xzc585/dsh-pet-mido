@@ -45,7 +45,7 @@ describe('handleSystemMemoryRoutes', () => {
       fetch: async (inputUrl, init) => {
         const url = String(inputUrl);
         if (url.endsWith('/api/health')) {
-          return new Response(JSON.stringify({ ok: true, app: 'mido-ram-cleaner' }), { status: 200 });
+          return Response.json({ ok: true, app: 'mido-ram-cleaner', configVersion: 2 });
         }
         if (url.endsWith('/api/clean') && init?.method === 'POST') {
           return new Response(
@@ -67,5 +67,35 @@ describe('handleSystemMemoryRoutes', () => {
     const body = (posted as { obj: { ok: boolean; usedPercent: number } }).obj;
     assert.equal(body.ok, true);
     assert.equal(body.usedPercent, 37.5);
+  });
+
+  test('保存占用显示和通知选项，也接受省略这两项的旧版请求', async () => {
+    const base = { autoClean: true, intervalSec: 1800, thresholdPercent: 85, debounceSec: 120 };
+    const picked = { ...base, showUsage: false, notifyOnClean: true };
+    const sent: unknown[] = [];
+    setSystemMemoryRuntime({
+      platform: 'win32',
+      fetch: async (inputUrl, init) => {
+        if (String(inputUrl).endsWith('/api/health'))
+          return Response.json({ ok: true, app: 'mido-ram-cleaner', configVersion: 2 });
+        assert.ok(String(inputUrl).endsWith('/api/config'));
+        sent.push(JSON.parse(String(init?.body)));
+        return Response.json({ config: picked });
+      },
+    });
+    for (const config of [picked, base]) {
+      const result = await handleSystemMemoryRoutes(
+        deps,
+        input('POST', 'system-memory/config', JSON.stringify(config)),
+      );
+      assert.deepEqual((result as { obj: { config: unknown } }).obj.config, picked);
+    }
+    assert.deepEqual(sent, [picked, base]);
+    const invalid = await handleSystemMemoryRoutes(
+      deps,
+      input('POST', 'system-memory/config', JSON.stringify({ ...base, notifyOnClean: 'true' })),
+    );
+    assert.equal((invalid as { status: number }).status, 400);
+    assert.equal(sent.length, 2);
   });
 });

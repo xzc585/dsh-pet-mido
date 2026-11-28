@@ -151,7 +151,7 @@ dsh-pet 的宿主半侧向 DSH 自己的 Web 服务注册了**一条前缀路由
 | --- | --- | --- |
 | `GET /dsh-pet-7340/system-memory` | 当前整机占用、是否管理员、自动清理配置、上次清理；帮手不可用时 `available: false` |
 | `POST /dsh-pet-7340/system-memory` | 立即清理一次（收缩工作集） |
-| `POST /dsh-pet-7340/system-memory/config` | 写入自动清理设置（`autoClean`、`intervalSec`、`thresholdPercent`、`debounceSec`） |
+| `POST /dsh-pet-7340/system-memory/config` | 写入 `autoClean`、`intervalSec`、`thresholdPercent`、`debounceSec`。可同时更新占用显示 `showUsage` 和完成通知 `notifyOnClean` |
 | `POST /dsh-pet-7340/system-memory/clean-elevated` | 请求管理员权限后做一次完整清理（含待机列表） |
 
 ## state 详解

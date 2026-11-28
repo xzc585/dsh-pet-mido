@@ -3,8 +3,10 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"unsafe"
 
@@ -16,15 +18,21 @@ const (
 	wmTray          = wmApp + 1
 	wmCommand       = 0x0111
 	wmDestroy       = 0x0002
+	wmClose         = 0x0010
 	wmRButtonUp     = 0x0205
 	wmLButtonUp     = 0x0202
 	wmLButtonDblClk = 0x0203
 
-	nimAdd     = 0x00000000
-	nimDelete  = 0x00000002
-	nifMessage = 0x00000001
-	nifIcon    = 0x00000002
-	nifTip     = 0x00000004
+	nimAdd               = 0x00000000
+	nimModify            = 0x00000001
+	nimDelete            = 0x00000002
+	nifMessage           = 0x00000001
+	nifIcon              = 0x00000002
+	nifTip               = 0x00000004
+	nifInfo              = 0x00000010
+	nifRealtime          = 0x00000040
+	niifInfo             = 0x00000001
+	niifRespectQuietTime = 0x00000080
 
 	tpmLeftAlign   = 0x0000
 	tpmRightButton = 0x0002
@@ -41,13 +49,21 @@ const (
 )
 
 type notifyIconData struct {
-	Size            uint32
-	Wnd             windows.HWND
-	ID              uint32
-	Flags           uint32
-	CallbackMessage uint32
-	Icon            windows.Handle
-	Tip             [128]uint16
+	Size             uint32
+	Wnd              windows.HWND
+	ID               uint32
+	Flags            uint32
+	CallbackMessage  uint32
+	Icon             windows.Handle
+	Tip              [128]uint16
+	State            uint32
+	StateMask        uint32
+	Info             [256]uint16
+	TimeoutOrVersion uint32
+	InfoTitle        [64]uint16
+	InfoFlags        uint32
+	SharedGUID       windows.GUID
+	BalloonIcon      windows.Handle
 }
 
 type point struct{ X, Y int32 }
@@ -88,6 +104,7 @@ var (
 	procTranslateMessage    = user32.NewProc("TranslateMessage")
 	procDispatchMessageW    = user32.NewProc("DispatchMessageW")
 	procPostQuitMessage     = user32.NewProc("PostQuitMessage")
+	procPostMessageW        = user32.NewProc("PostMessageW")
 	procDestroyWindow       = user32.NewProc("DestroyWindow")
 	procCreatePopupMenu     = user32.NewProc("CreatePopupMenu")
 	procAppendMenuW         = user32.NewProc("AppendMenuW")
@@ -99,6 +116,7 @@ var (
 	procDestroyIcon         = user32.NewProc("DestroyIcon")
 	procLoadIconW           = user32.NewProc("LoadIconW")
 	procShellNotifyIconW    = shell32.NewProc("Shell_NotifyIconW")
+	procShellExecuteExW     = shell32.NewProc("ShellExecuteExW")
 	procGetModuleHandleW    = kernel32.NewProc("GetModuleHandleW")
 )
 
@@ -198,7 +216,7 @@ func trayWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		}
 		return 0
 	case wmDestroy:
-		removeTrayIcon()
+		removeTrayIcon(windows.HWND(hwnd))
 		procPostQuitMessage.Call(0)
 		return 0
 	}
@@ -237,22 +255,26 @@ func addTrayIcon(hwnd windows.HWND, icon windows.Handle) error {
 	nid.CallbackMessage = wmTray
 	nid.Icon = icon
 	copyUTF16(nid.Tip[:], "米豆系统内存清理")
-	r, _, err := procShellNotifyIconW.Call(nimAdd, uintptr(unsafe.Pointer(&nid)))
+	return updateTrayIcon(nimAdd, &nid)
+}
+
+func updateTrayIcon(message uintptr, nid *notifyIconData) error {
+	r, _, err := procShellNotifyIconW.Call(message, uintptr(unsafe.Pointer(nid)))
 	if r == 0 {
+		if err == windows.ERROR_SUCCESS {
+			return fmt.Errorf("Shell_NotifyIconW 操作 %d 失败", message)
+		}
 		return err
 	}
 	return nil
 }
 
-func removeTrayIcon() {
-	if trayWnd == 0 {
+func removeTrayIcon(hwnd windows.HWND) {
+	if hwnd == 0 {
 		return
 	}
-	var nid notifyIconData
-	nid.Size = uint32(unsafe.Sizeof(nid))
-	nid.Wnd = trayWnd
-	nid.ID = 1
-	procShellNotifyIconW.Call(nimDelete, uintptr(unsafe.Pointer(&nid)))
+	nid := notifyIconData{Size: uint32(unsafe.Sizeof(notifyIconData{})), Wnd: hwnd, ID: 1}
+	_ = updateTrayIcon(nimDelete, &nid)
 }
 
 func copyUTF16(dst []uint16, s string) {
@@ -266,8 +288,25 @@ func copyUTF16(dst []uint16, s string) {
 
 func startTray(open, clean, exit func()) error {
 	onOpen, onClean, onExit = open, clean, exit
-	className, _ := windows.UTF16PtrFromString("MidoRamCleanerTray")
-	wndProc := windows.NewCallback(trayWndProc)
+	hwnd, err := createHiddenWindow("MidoRamCleanerTray", windows.NewCallback(trayWndProc))
+	if err != nil {
+		return err
+	}
+	trayWnd = hwnd
+	trayIcon = loadTrayIcon()
+	if err := addTrayIcon(trayWnd, trayIcon); err != nil {
+		procDestroyWindow.Call(uintptr(trayWnd))
+		if trayIcon != 0 {
+			procDestroyIcon.Call(uintptr(trayIcon))
+		}
+		trayWnd, trayIcon = 0, 0
+		return err
+	}
+	return nil
+}
+
+func createHiddenWindow(name string, wndProc uintptr) (windows.HWND, error) {
+	className := windows.StringToUTF16Ptr(name)
 	wc := wndClassEx{
 		Size:      uint32(unsafe.Sizeof(wndClassEx{})),
 		WndProc:   wndProc,
@@ -275,8 +314,8 @@ func startTray(open, clean, exit func()) error {
 		ClassName: className,
 	}
 	r, _, err := procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc)))
-	if r == 0 && err != nil && err != windows.ERROR_CLASS_ALREADY_EXISTS && err != windows.ERROR_SUCCESS {
-		return err
+	if r == 0 && err != windows.ERROR_CLASS_ALREADY_EXISTS {
+		return 0, err
 	}
 	// Hidden message-only-style window used solely for tray callbacks.
 	hwnd, _, err := procCreateWindowExW.Call(
@@ -287,17 +326,19 @@ func startTray(open, clean, exit func()) error {
 		0, 0, uintptr(getModuleHandle()), 0,
 	)
 	if hwnd == 0 {
-		return err
+		return 0, err
 	}
-	trayWnd = windows.HWND(hwnd)
-	trayIcon = loadTrayIcon()
-	if err := addTrayIcon(trayWnd, trayIcon); err != nil {
-		return err
-	}
-	return nil
+	return windows.HWND(hwnd), nil
 }
 
 func runTrayLoop() {
+	runWindowMessageLoop()
+	if trayIcon != 0 {
+		procDestroyIcon.Call(uintptr(trayIcon))
+	}
+}
+
+func runWindowMessageLoop() {
 	var m msg
 	for {
 		r, _, _ := procGetMessageW.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0)
@@ -307,13 +348,12 @@ func runTrayLoop() {
 		procTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
 		procDispatchMessageW.Call(uintptr(unsafe.Pointer(&m)))
 	}
-	if trayIcon != 0 {
-		procDestroyIcon.Call(uintptr(trayIcon))
-	}
 }
 
 func requestQuit() {
-	procPostQuitMessage.Call(0)
+	if trayWnd != 0 {
+		procPostMessageW.Call(uintptr(trayWnd), wmClose, 0, 0)
+	}
 }
 
 func openSettingsWindow(url string) {
@@ -353,19 +393,69 @@ func openDefaultBrowser(url string) {
 	_ = windows.ShellExecute(0, windows.StringToUTF16Ptr("open"), windows.StringToUTF16Ptr(url), nil, nil, windows.SW_SHOWNORMAL)
 }
 
-func relaunchElevated(args string) error {
+type shellExecuteInfo struct {
+	Size      uint32
+	Mask      uint32
+	Wnd       windows.HWND
+	Verb      *uint16
+	File      *uint16
+	Args      *uint16
+	Directory *uint16
+	Show      int32
+	Instance  windows.Handle
+	IDList    uintptr
+	Class     *uint16
+	ClassKey  windows.Handle
+	HotKey    uint32
+	Icon      windows.Handle
+	Process   windows.Handle
+}
+
+func relaunchElevated(args string) (func() error, error) {
 	exe, err := os.Executable()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	verb, _ := windows.UTF16PtrFromString("runas")
-	file, _ := windows.UTF16PtrFromString(exe)
-	param, _ := windows.UTF16PtrFromString(args)
-	err = windows.ShellExecute(0, verb, file, param, nil, windows.SW_HIDE)
-	if err != nil && err != windows.ERROR_SUCCESS {
-		return err
+	// Shell extensions may use COM. Keep the apartment on the same OS thread.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if err := windows.CoInitializeEx(0, windows.COINIT_APARTMENTTHREADED); err != nil && err != syscall.Errno(1) {
+		return nil, err
 	}
-	return nil
+	defer windows.CoUninitialize()
+
+	const noCloseProcess = 0x40
+	const noAsync = 0x100
+	info := shellExecuteInfo{
+		Size: uint32(unsafe.Sizeof(shellExecuteInfo{})),
+		Mask: noCloseProcess | noAsync,
+		Verb: windows.StringToUTF16Ptr("runas"),
+		File: windows.StringToUTF16Ptr(exe),
+		Args: windows.StringToUTF16Ptr(args),
+		Show: windows.SW_HIDE,
+	}
+	ok, _, err := procShellExecuteExW.Call(uintptr(unsafe.Pointer(&info)))
+	if ok == 0 {
+		if err == windows.ERROR_SUCCESS {
+			return nil, fmt.Errorf("无法启动管理员清理进程")
+		}
+		return nil, err
+	}
+	child := info.Process
+	if child == 0 {
+		return nil, fmt.Errorf("没有取得管理员清理进程句柄")
+	}
+	return func() error {
+		defer windows.CloseHandle(child)
+		event, err := windows.WaitForSingleObject(child, windows.INFINITE)
+		if err != nil {
+			return err
+		}
+		if event != windows.WAIT_OBJECT_0 {
+			return fmt.Errorf("等待管理员清理进程返回 %d", event)
+		}
+		return nil
+	}, nil
 }
 
 func alreadyRunning() (windows.Handle, bool) {
@@ -388,6 +478,3 @@ func showError(title, text string) {
 	proc := user32.NewProc("MessageBoxW")
 	proc.Call(0, uintptr(unsafe.Pointer(mPtr)), uintptr(unsafe.Pointer(tPtr)), 0x10)
 }
-
-// silence unused import if syscall is only needed for some builds
-var _ = syscall.Errno(0)

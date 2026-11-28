@@ -95,7 +95,10 @@ after(async () => {
   if (server) await new Promise((resolve) => server.close(resolve));
 });
 
-async function open(t, { get = customized, put, post, viewport = { width: 900, height: 900 }, lang = 'en' } = {}) {
+async function open(
+  t,
+  { get = customized, put, post, systemMemory, viewport = { width: 900, height: 900 }, lang = 'en' } = {},
+) {
   const context = await browser.newContext({ viewport });
   t.after(() => context.close());
   const page = await context.newPage();
@@ -106,6 +109,7 @@ async function open(t, { get = customized, put, post, viewport = { width: 900, h
   t.after(() => assert.deepEqual(errors, []));
   await page.route('**/dsh-pet-7340/**', async (route) => {
     const request = route.request();
+    if (systemMemory && new URL(request.url()).pathname.includes('/system-memory')) return systemMemory(route);
     if (new URL(request.url()).pathname === '/dsh-pet-7340/config') {
       if (request.method() === 'PUT') {
         writes.push(request.postDataJSON());
@@ -150,6 +154,113 @@ async function assertSaveDisabled(page) {
 function withMainAssetRoot(pets) {
   return pets.map((pet) => ({ ...pet, assetRoot: 'main' }));
 }
+
+const memoryConfig = { autoClean: true, intervalSec: 1800, thresholdPercent: 85, debounceSec: 120 };
+const memorySnap = {
+  usedBytes: 8 * 1024 ** 3,
+  totalBytes: 16 * 1024 ** 3,
+  availableBytes: 8 * 1024 ** 3,
+  usedPercent: 50,
+};
+
+test('memory settings: the display and notice switches save independently with legacy defaults', async (t) => {
+  let config = memoryConfig;
+  const updates = [];
+  const { page } = await open(t, {
+    systemMemory: (route) => {
+      if (route.request().method() === 'POST') {
+        config = route.request().postDataJSON();
+        updates.push(config);
+      }
+      return route.fulfill({ json: { ok: true, available: true, config, ...memorySnap } });
+    },
+  });
+  const usage = page.getByText(/Current usage.*50% used/);
+  await usage.waitFor();
+  const showUsage = page.getByRole('checkbox', { name: 'Show current memory usage' });
+  const notify = page.getByRole('checkbox', { name: 'Notify me after cleanup' });
+  assert.equal(await showUsage.isChecked(), true);
+  assert.equal(await notify.isChecked(), false);
+  await showUsage.uncheck();
+  await usage.waitFor({ state: 'hidden' });
+  await notify.check();
+  await page.getByText('Saved.', { exact: true }).waitFor();
+  assert.deepEqual(updates, [
+    { ...memoryConfig, showUsage: false, notifyOnClean: false },
+    { ...memoryConfig, showUsage: false, notifyOnClean: true },
+  ]);
+  assert.equal(await showUsage.isChecked(), false);
+  assert.equal(await notify.isChecked(), true);
+});
+
+test('memory settings: a cleanup at higher usage shows the measured readings and the timestamp', async (t) => {
+  const at = '2026-11-28T03:42:00.000Z';
+  const { page } = await open(t, {
+    lang: 'zh',
+    systemMemory: (route) =>
+      route.fulfill({
+        json: {
+          ok: true,
+          available: true,
+          config: { ...memoryConfig, showUsage: false },
+          lastClean: {
+            at,
+            trigger: 'auto',
+            before: memorySnap,
+            after: { ...memorySnap, usedBytes: 9 * 1024 ** 3, usedPercent: 56.25 },
+          },
+        },
+      }),
+  });
+  const report = page.locator(`p:has(time[datetime="${at}"])`);
+  await report.waitFor();
+  assert.match(await report.textContent(), /自动清理.*8 GB.*50%.*9 GB.*56\.3%/);
+  assert.doesNotMatch(await report.textContent(), /降到/);
+  assert.equal(await page.getByText(/当前占用/).count(), 0);
+  assert.equal(await page.getByRole('checkbox', { name: '显示当前内存占用' }).isChecked(), false);
+});
+
+test('memory settings: a rejected toggle restores the saved choice and live reading', async (t) => {
+  const { page } = await open(t, {
+    systemMemory: (route) =>
+      route.request().method() === 'POST'
+        ? route.fulfill({ status: 500, json: { available: true, message: 'Memory config write rejected' } })
+        : route.fulfill({ json: { ok: true, available: true, config: memoryConfig, ...memorySnap } }),
+  });
+  const usage = page.getByText(/Current usage.*50% used/);
+  await usage.waitFor();
+  const showUsage = page.getByRole('checkbox', { name: 'Show current memory usage' });
+  // click() allows the server response to arrive before Playwright can check the final checked state.
+  await showUsage.click();
+  await page.getByText('Memory config write rejected').waitFor();
+  assert.equal(await showUsage.isChecked(), true);
+  assert.equal(await usage.isVisible(), true);
+});
+
+test('memory settings: a delayed poll cannot undo a completed save', async (t) => {
+  const pendingPoll = Promise.withResolvers();
+  let polls = 0;
+  let config = { ...memoryConfig, showUsage: true, notifyOnClean: false };
+  const { page } = await open(t, {
+    systemMemory: (route) => {
+      if (route.request().method() === 'POST') config = route.request().postDataJSON();
+      else if (++polls === 2) {
+        pendingPoll.resolve(route);
+        return;
+      }
+      return route.fulfill({ json: { ok: true, available: true, config, ...memorySnap } });
+    },
+  });
+  const stale = await pendingPoll.promise;
+  const notify = page.getByRole('checkbox', { name: 'Notify me after cleanup' });
+  await notify.check();
+  await page.getByText('Saved.', { exact: true }).waitFor();
+  await stale.fulfill({
+    json: { ok: true, available: true, config: { ...config, notifyOnClean: false }, ...memorySnap },
+  });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(await notify.isChecked(), true);
+});
 
 test('config save errors: write failures keep edits visible and allow a retry', async (t) => {
   let attempts = 0;

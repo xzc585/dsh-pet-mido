@@ -367,8 +367,17 @@ export const es: Record<Key, string> = {
   systemMemoryElevated: 'Limpieza completa como administrador',
   systemMemoryElevatedHint:
     'Windows pedirá permiso. Si lo rechazas, «Limpiar ahora» seguirá pudiendo reducir los conjuntos de trabajo a los que tengas acceso.',
-  systemMemoryLastClean: 'Última limpieza: el uso pasó de {before} a {after}.',
-  systemMemoryLastCleanAdmin: 'Última limpieza: el uso pasó de {before} a {after} (incluye la lista de espera).',
+  systemMemoryShowUsage: 'Mostrar el uso actual de memoria',
+  systemMemoryShowUsageHint: 'Muestra el uso de memoria del equipo en esta tarjeta.',
+  systemMemoryNotifyOnClean: 'Avisarme al terminar la limpieza',
+  systemMemoryNotifyOnCleanHint:
+    'Muestra una notificación de Windows tras una limpieza correcta, aunque los ajustes estén cerrados.',
+  systemMemoryLastCleanHeading: 'Última limpieza',
+  systemMemoryCleanAuto: 'Limpieza automática',
+  systemMemoryCleanManual: 'Limpieza manual',
+  systemMemoryCleanElevated: 'Limpieza como administrador',
+  systemMemoryLastClean: 'Memoria en uso {before} → {after}',
+  systemMemoryLastCleanAdmin: 'Memoria en uso {before} → {after} (incluye la lista de espera)',
   systemMemoryUnavailable: 'No se pudo conectar ahora con el ayudante de memoria del sistema.',
   systemMemoryMissing:
     'No se encontró el ayudante de memoria del sistema. Comprueba que está en la carpeta del complemento.',

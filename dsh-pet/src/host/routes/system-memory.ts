@@ -28,6 +28,8 @@ function asConfig(value: unknown): SystemMemoryConfig | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const raw = value as Record<string, unknown>;
   if (typeof raw.autoClean !== 'boolean') return undefined;
+  if (raw.showUsage !== undefined && typeof raw.showUsage !== 'boolean') return undefined;
+  if (raw.notifyOnClean !== undefined && typeof raw.notifyOnClean !== 'boolean') return undefined;
   const intervalSec = Number(raw.intervalSec);
   const thresholdPercent = Number(raw.thresholdPercent);
   const debounceSec = Number(raw.debounceSec);
@@ -39,6 +41,8 @@ function asConfig(value: unknown): SystemMemoryConfig | undefined {
     intervalSec,
     thresholdPercent,
     debounceSec,
+    showUsage: raw.showUsage,
+    notifyOnClean: raw.notifyOnClean,
   };
 }
 

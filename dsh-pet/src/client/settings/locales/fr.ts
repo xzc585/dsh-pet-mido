@@ -368,9 +368,17 @@ export const fr: Record<Key, string> = {
   systemMemoryElevated: 'Nettoyage complet en tant qu’administrateur',
   systemMemoryElevatedHint:
     'Windows demandera l’autorisation. En cas de refus, « Nettoyer maintenant » peut encore réduire les ensembles de travail auxquels vous avez accès.',
-  systemMemoryLastClean: 'Dernier nettoyage : l’utilisation est passée de {before} à {after}.',
-  systemMemoryLastCleanAdmin:
-    'Dernier nettoyage : l’utilisation est passée de {before} à {after} (liste de veille incluse).',
+  systemMemoryShowUsage: 'Afficher l’utilisation actuelle de la mémoire',
+  systemMemoryShowUsageHint: 'Affiche l’utilisation de la mémoire de cet ordinateur dans cette carte.',
+  systemMemoryNotifyOnClean: 'Me prévenir après le nettoyage',
+  systemMemoryNotifyOnCleanHint:
+    'Affiche une notification Windows après un nettoyage réussi, même si les réglages sont fermés.',
+  systemMemoryLastCleanHeading: 'Dernier nettoyage',
+  systemMemoryCleanAuto: 'Nettoyage automatique',
+  systemMemoryCleanManual: 'Nettoyage manuel',
+  systemMemoryCleanElevated: 'Nettoyage en tant qu’administrateur',
+  systemMemoryLastClean: 'Mémoire utilisée {before} → {after}',
+  systemMemoryLastCleanAdmin: 'Mémoire utilisée {before} → {after} (liste de veille incluse)',
   systemMemoryUnavailable: 'Impossible de joindre l’assistant de mémoire système pour le moment.',
   systemMemoryMissing:
     'L’assistant de mémoire système est introuvable. Vérifiez qu’il se trouve dans le dossier du plugin.',

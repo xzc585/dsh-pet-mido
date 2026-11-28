@@ -362,9 +362,17 @@ export const pt: Record<Key, string> = {
   systemMemoryElevated: 'Limpeza completa como administrador',
   systemMemoryElevatedHint:
     'O Windows vai pedir permissão. Se recusares, «Limpar agora» ainda pode reduzir os conjuntos de trabalho a que tens acesso.',
-  systemMemoryLastClean: 'Última limpeza: a utilização passou de {before} para {after}.',
-  systemMemoryLastCleanAdmin:
-    'Última limpeza: a utilização passou de {before} para {after} (inclui a lista de espera).',
+  systemMemoryShowUsage: 'Mostrar a utilização atual da memória',
+  systemMemoryShowUsageHint: 'Mostra a utilização da memória do computador neste cartão.',
+  systemMemoryNotifyOnClean: 'Notificar-me após a limpeza',
+  systemMemoryNotifyOnCleanHint:
+    'Mostra uma notificação do Windows após uma limpeza bem-sucedida, mesmo com as definições fechadas.',
+  systemMemoryLastCleanHeading: 'Última limpeza',
+  systemMemoryCleanAuto: 'Limpeza automática',
+  systemMemoryCleanManual: 'Limpeza manual',
+  systemMemoryCleanElevated: 'Limpeza como administrador',
+  systemMemoryLastClean: 'Memória utilizada {before} → {after}',
+  systemMemoryLastCleanAdmin: 'Memória utilizada {before} → {after} (inclui a lista de espera)',
   systemMemoryUnavailable: 'Não foi possível ligar agora ao auxiliar de memória do sistema.',
   systemMemoryMissing: 'O auxiliar de memória do sistema não foi encontrado. Confirma que está na pasta do plugin.',
   systemMemoryNotWindows: 'A limpeza de memória do sistema só está disponível no Windows.',

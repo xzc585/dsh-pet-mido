@@ -22,6 +22,8 @@ export const SYSTEM_MEMORY_BASE = 'http://127.0.0.1:17341';
 /** 发布版帮手文件名。 */
 export const SYSTEM_MEMORY_EXE = 'mido-ram-cleaner.exe';
 
+const SYSTEM_MEMORY_CONFIG_VERSION = 2;
+
 /** 为什么帮手当前不可用。 */
 export type SystemMemoryUnavailable = 'not-windows' | 'helper-missing' | 'helper-failed';
 
@@ -31,6 +33,8 @@ export interface SystemMemoryConfig {
   intervalSec: number;
   thresholdPercent: number;
   debounceSec: number;
+  showUsage?: boolean;
+  notifyOnClean?: boolean;
 }
 
 /** 一次内存快照。 */
@@ -44,6 +48,7 @@ export interface SystemMemorySnap {
 /** 一次清理报告。 */
 export interface SystemMemoryCleanReport extends Partial<SystemMemorySnap> {
   at?: string;
+  trigger?: 'auto' | 'manual' | 'elevated';
   isAdmin?: boolean;
   workingSetsOK?: boolean;
   standbyCleared?: boolean;
@@ -128,23 +133,51 @@ function unavailable(reason: SystemMemoryUnavailable, message: string): SystemMe
   return { ok: false, available: false, reason, message };
 }
 
-async function healthOk(): Promise<boolean> {
+async function readHelperVersion(): Promise<number | undefined> {
   try {
     const response = await runtime.fetch(SYSTEM_MEMORY_BASE + '/api/health', {
       method: 'GET',
       signal: AbortSignal.timeout(800),
     });
-    if (!response.ok) return false;
-    const body = (await response.json()) as { ok?: unknown; app?: unknown };
-    return body.ok === true && body.app === 'mido-ram-cleaner';
+    if (!response.ok) return undefined;
+    const body = (await response.json()) as { ok?: unknown; app?: unknown; configVersion?: unknown };
+    if (body.ok !== true || body.app !== 'mido-ram-cleaner') return undefined;
+    return asNumber(body.configVersion) ?? 1;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
+function hasMemoryPreferences(version: number | undefined): boolean {
+  return version !== undefined && version >= SYSTEM_MEMORY_CONFIG_VERSION;
+}
+
+async function waitForHelper(predicate: (version: number | undefined) => boolean, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    if (predicate(await readHelperVersion())) return true;
+    await runtime.sleep(200);
+  } while (Date.now() < deadline);
+  return false;
+}
+
 async function spawnAndWait(exe: string): Promise<boolean> {
-  if (await healthOk()) return true;
   try {
+    const version = await readHelperVersion();
+    if (hasMemoryPreferences(version)) return true;
+    if (version !== undefined) {
+      const stopped = await runtime.fetch(SYSTEM_MEMORY_BASE + '/api/quit', {
+        method: 'POST',
+        signal: AbortSignal.timeout(1500),
+      });
+      if (
+        !stopped.ok ||
+        !(await waitForHelper((current) => current === undefined || hasMemoryPreferences(current), 2500))
+      ) {
+        return false;
+      }
+      if (hasMemoryPreferences(await readHelperVersion())) return true;
+    }
     const spawned = runtime.spawn(exe, [], {
       stdio: 'ignore',
       windowsHide: true,
@@ -157,12 +190,7 @@ async function spawnAndWait(exe: string): Promise<boolean> {
     spawned.on('exit', () => {
       if (child === spawned) child = undefined;
     });
-    const deadline = Date.now() + 8000;
-    while (Date.now() < deadline) {
-      if (await healthOk()) return true;
-      await runtime.sleep(200);
-    }
-    return false;
+    return await waitForHelper(hasMemoryPreferences, 8000);
   } catch {
     return false;
   }
@@ -176,7 +204,7 @@ export async function ensureSystemMemoryHelper(): Promise<SystemMemoryStatus> {
   if (runtime.platform !== 'win32') {
     return unavailable('not-windows', '系统内存清理只在 Windows 上可用。');
   }
-  if (await healthOk()) {
+  if (hasMemoryPreferences(await readHelperVersion())) {
     return { ok: true, available: true };
   }
   const exe = bundledSystemMemoryExe();
@@ -258,14 +286,23 @@ function asConfig(value: unknown): SystemMemoryConfig | undefined {
   ) {
     return undefined;
   }
-  return { autoClean: raw.autoClean, intervalSec, thresholdPercent, debounceSec };
+  return {
+    autoClean: raw.autoClean,
+    intervalSec,
+    thresholdPercent,
+    debounceSec,
+    showUsage: raw.showUsage !== false,
+    notifyOnClean: raw.notifyOnClean === true,
+  };
 }
 
 function asCleanReport(value: unknown): SystemMemoryCleanReport | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const raw = value as Record<string, unknown>;
+  const trigger = raw.trigger;
   return {
     at: typeof raw.at === 'string' ? raw.at : undefined,
+    trigger: trigger === 'auto' || trigger === 'manual' || trigger === 'elevated' ? trigger : undefined,
     isAdmin: typeof raw.isAdmin === 'boolean' ? raw.isAdmin : undefined,
     workingSetsOK: typeof raw.workingSetsOK === 'boolean' ? raw.workingSetsOK : undefined,
     standbyCleared: typeof raw.standbyCleared === 'boolean' ? raw.standbyCleared : undefined,

@@ -361,9 +361,17 @@ export const de: Record<Key, string> = {
   systemMemoryElevated: 'Vollständige Bereinigung als Administrator',
   systemMemoryElevatedHint:
     'Windows fragt nach einer Freigabe. Lehnst du ab, kann „Jetzt bereinigen“ weiterhin erreichbare Working Sets verkleinern.',
-  systemMemoryLastClean: 'Letzte Bereinigung: die Belegung ging von {before} auf {after}.',
-  systemMemoryLastCleanAdmin:
-    'Letzte Bereinigung: die Belegung ging von {before} auf {after} (inklusive Standby-Liste).',
+  systemMemoryShowUsage: 'Aktuelle Speichernutzung anzeigen',
+  systemMemoryShowUsageHint: 'Zeigt die Speichernutzung des Computers in dieser Karte an.',
+  systemMemoryNotifyOnClean: 'Nach der Bereinigung benachrichtigen',
+  systemMemoryNotifyOnCleanHint:
+    'Zeigt nach erfolgreicher Bereinigung eine Windows-Benachrichtigung an, auch bei geschlossenen Einstellungen.',
+  systemMemoryLastCleanHeading: 'Letzte Bereinigung',
+  systemMemoryCleanAuto: 'Automatische Bereinigung',
+  systemMemoryCleanManual: 'Manuelle Bereinigung',
+  systemMemoryCleanElevated: 'Bereinigung als Administrator',
+  systemMemoryLastClean: 'Belegter Speicher {before} → {after}',
+  systemMemoryLastCleanAdmin: 'Belegter Speicher {before} → {after} (inklusive Standby-Liste)',
   systemMemoryUnavailable: 'Der Systemspeicher-Helfer ist gerade nicht erreichbar.',
   systemMemoryMissing: 'Der Systemspeicher-Helfer wurde nicht gefunden. Bitte prüfe, ob er im Plugin-Ordner liegt.',
   systemMemoryNotWindows: 'Das Bereinigen des Systemspeichers ist nur unter Windows verfügbar.',

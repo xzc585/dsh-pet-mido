@@ -66,9 +66,9 @@ Windows 可以解压发行 ZIP，双击解包目录中的 **`dsh-pet.exe`**。�
 
 右键桌面上的米豆，点「打开软件」，在 DeepSeek Harness 里打开设置，进入「桌宠配置」，即可看到「系统内存清理」。独立模式则是右键米豆 →「打开 AI 设置」，同一张卡。
 
-在这张卡里可以查看当前整机已用 / 可用 / 总共内存，打开或关闭自动清理，设定定时间隔、占用阈值和最短间隔，也可以立刻清一次。改动会立刻生效，不必点页面底部的「保存」。这和上面的「清理缓存」不是一回事。
+在这张卡里可以选择显示或隐藏当前整机已用、可用和总内存。打开「清理完成后通知」后，设置页关闭时也能收到 Windows 通知。上次清理的时间和占用变化可随时在卡片上查看。也可以调整自动清理间隔、阈值和最短间隔，或立刻清一次。设置即时保存。
 
-真正干活的是无窗口后台帮手 `mido-ram-cleaner.exe`（仓库里在 `tools/mido-ram-cleaner/dist/`，插件会从 `dsh-pet/assets/tools/` 自动拉起）。它会回收 **可释放** 的内存（收缩进程工作集；管理员权限下还可清空待机列表），不会结束其他程序，也不会自动弹出设置窗口或托盘图标。配置保存在 `%APPDATA%\mido-ram-cleaner\config.json`。
+后台帮手 `mido-ram-cleaner.exe` 会回收可释放的内存，收缩进程工作集，管理员权限下还可清空待机列表。程序和对话继续运行。配置保存在 `%APPDATA%\mido-ram-cleaner\config.json`。
 
 构建、API 与能力边界见 [tools/mido-ram-cleaner/README.md](tools/mido-ram-cleaner/README.md)。简要构建：
 

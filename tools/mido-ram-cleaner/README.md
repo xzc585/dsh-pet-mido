@@ -7,9 +7,9 @@ Windows 后台帮手：监视整机物理内存，并按你在宠物设置里的
 1. 右键桌面上的米豆。
 2. 桌面版点「打开软件」，在 DeepSeek Harness 里打开设置，进入「桌宠配置」。
 3. 独立模式则点「打开 AI 设置」。
-4. 在「系统内存清理」卡里查看当前占用，开关自动清理，设定定时间隔、占用阈值和最短间隔，或点「立即清理」。
+4. 在「系统内存清理」卡里设置「显示当前内存占用」和「清理完成后通知」，查看上次清理的时间和占用变化，或点「立即清理」。
 
-插件会自动找到并拉起这份帮手（优先用插件目录里的 `dsh-pet/assets/tools/mido-ram-cleaner.exe`，完整仓库里也可以用本目录的 `dist/mido-ram-cleaner.exe`）。默认无窗口、无托盘，不把这件事做成另外一个软件。
+插件会自动找到并拉起后台帮手。插件包内使用 `dsh-pet/assets/tools/mido-ram-cleaner.exe`，完整仓库也可以使用本目录的 `dist/mido-ram-cleaner.exe`。
 
 它和设置页里的「清理缓存」不是一回事。那张卡只清语音缓存、未在播放的动画和天气缓存，不会去清系统内存。
 
@@ -22,7 +22,7 @@ Windows 后台帮手：监视整机物理内存，并按你在宠物设置里的
 在仓库中的本目录下交叉编译（在 Linux / macOS / Windows 都可以）：
 
 ```sh
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o dist/mido-ram-cleaner.exe .
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -H windowsgui" -o dist/mido-ram-cleaner.exe .
 ```
 
 发布前请把同一份 exe 再拷到 `dsh-pet/assets/tools/mido-ram-cleaner.exe`，这样只安装插件目录的拷贝也能被自动拉起。
@@ -43,22 +43,22 @@ go-winres simply --arch amd64 --manifest gui --icon icon.ico \
 
 | 方法 | 路径 | 作用 |
 | --- | --- | --- |
-| GET | `/api/health` | 探活 |
+| GET | `/api/health` | 探活并返回设置协议版本 `configVersion` |
 | GET | `/api/status` | 当前已用 / 可用 / 总共内存、是否管理员、当前配置、上次清理 |
-| POST | `/api/config` | 写入自动清理设置（`autoClean`、`intervalSec`、`thresholdPercent`、`debounceSec`） |
+| POST | `/api/config` | 写入自动清理设置，可同时更新占用显示 `showUsage` 和完成通知 `notifyOnClean` |
 | POST | `/api/clean` | 立即清理一次（不需要管理员） |
 | POST | `/api/clean-elevated` | 请求管理员权限后做一次完整清理 |
 | POST | `/api/quit` | 退出帮手 |
 
 插件对外再包一层，供设置页调用（同源，不必直接打 17341）：`GET/POST /system-memory`、`POST /system-memory/config`、`POST /system-memory/clean-elevated`。
 
-设置页可看到已用、可用、总共内存和占用百分比，大约每两秒刷新一次。可打开「启用自动清理」，设定：
+设置页默认显示已用、可用、总内存和占用百分比，大约每两秒刷新一次。「清理完成后通知」默认关闭。开启后，Windows 通知会显示完成时观察到的内存变化，关闭设置页也有效。可打开「启用自动清理」，设定：
 
 - 定时间隔（秒，30–86400）
 - 占用阈值（已用物理内存百分比，默认 85%）
 - 两次自动清理的最短间隔（秒），避免占用一直偏高时反复清理
 
-「立即清理」会马上执行一次，不受开关限制。若当前不是管理员，还可以「以管理员身份完整清理一次」。完整清理需要提升权限；拒绝提升时，仍会做不需要管理员也能做的那部分。
+「立即清理」可手动执行。选择「以管理员身份完整清理一次」会弹出权限确认。取消后可点击「立即清理」收缩工作集。
 
 同一时间只运行一份。再次启动默认不会弹出窗口。退出由插件在卸载时请求，或调用 `/api/quit`。
 

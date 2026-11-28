@@ -3,12 +3,15 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -16,12 +19,16 @@ import (
 )
 
 const listenAddr = "127.0.0.1:17341"
+const configVersion = 2
 
 type appState struct {
 	mu        sync.Mutex
 	cfg       Config
 	lastClean *CleanReport
 	startedAt time.Time
+	cleanMu   sync.Mutex
+	clean     func() CleanReport
+	notify    func(title, body string)
 }
 
 type statusPayload struct {
@@ -39,27 +46,22 @@ func (s *appState) snapshot() statusPayload {
 	return out
 }
 
-func (s *appState) setConfig(cfg Config) error {
+func (s *appState) updateConfig(body io.Reader) error {
+	raw, err := io.ReadAll(body)
+	if err != nil {
+		return errInvalidConfigJSON
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg, err := decodeConfig(bytes.NewReader(raw), s.cfg)
+	if err != nil {
+		return err
+	}
 	if err := saveConfig(cfg); err != nil {
 		return err
 	}
-	s.mu.Lock()
 	s.cfg = cfg
-	s.mu.Unlock()
 	return nil
-}
-
-func (s *appState) runClean() CleanReport {
-	rep := cleanMemory()
-	s.mu.Lock()
-	s.lastClean = &rep
-	s.mu.Unlock()
-	return rep
-}
-
-func (s *appState) payloadWithClean() statusPayload {
-	p := s.snapshot()
-	return p
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -76,13 +78,17 @@ func main() {
 	log.SetFlags(0)
 	log.SetPrefix("mido-ram-cleaner: ")
 
+	// The elevated child services exactly one request and must not touch the
+	// daemon's singleton mutex. It does not listen on the daemon port.
+	if len(os.Args) > 1 && os.Args[1] == "--clean-once" {
+		if len(os.Args) != 3 || runElevatedChild(os.Args[2], isAdmin(), cleanMemory) != nil {
+			os.Exit(1)
+		}
+		return
+	}
 	uiMode := false
-	oneShot := false
-	for _, a := range os.Args[1:] {
-		switch a {
-		case "--clean-once":
-			oneShot = true
-		case "--ui":
+	for _, arg := range os.Args[1:] {
+		if arg == "--ui" {
 			uiMode = true
 		}
 	}
@@ -99,19 +105,9 @@ func main() {
 	}
 	defer closeMutex(mutex)
 
-	if oneShot {
-		rep := cleanMemory()
-		if dir, err := appDir(); err == nil {
-			raw, _ := json.MarshalIndent(rep, "", "  ")
-			_ = os.WriteFile(filepath.Join(dir, "last-clean.json"), append(raw, '\n'), 0o644)
-		}
-		if rep.Error != "" {
-			os.Exit(1)
-		}
-		return
-	}
-
-	state := &appState{cfg: loadConfig(), startedAt: time.Now()}
+	notifier := &cleanNotifier{}
+	defer notifier.close()
+	state := &appState{cfg: loadConfig(), startedAt: time.Now(), clean: cleanMemory, notify: notifier.show}
 	if last := readLastCleanFile(); last != nil {
 		state.lastClean = last
 	}
@@ -134,7 +130,7 @@ func main() {
 		_, _ = w.Write(uiHTML)
 	})
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "app": "mido-ram-cleaner", "ui": uiMode})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "app": "mido-ram-cleaner", "ui": uiMode, "configVersion": configVersion})
 	})
 	mux.HandleFunc("/api/open", func(w http.ResponseWriter, r *http.Request) {
 		if uiMode {
@@ -150,12 +146,7 @@ func main() {
 			writeError(w, http.StatusMethodNotAllowed, "请使用 POST")
 			return
 		}
-		var cfg Config
-		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-			writeError(w, http.StatusBadRequest, "设置格式无效")
-			return
-		}
-		if err := state.setConfig(cfg); err != nil {
+		if err := state.updateConfig(r.Body); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -166,8 +157,11 @@ func main() {
 			writeError(w, http.StatusMethodNotAllowed, "请使用 POST")
 			return
 		}
-		state.runClean()
-		writeJSON(w, http.StatusOK, state.payloadWithClean())
+		if _, err := state.runClean(cleanManual); err != nil {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, state.snapshot())
 	})
 	mux.HandleFunc("/api/clean-elevated", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -175,33 +169,26 @@ func main() {
 			return
 		}
 		if isAdmin() {
-			state.runClean()
-			writeJSON(w, http.StatusOK, state.payloadWithClean())
-			return
-		}
-		if err := relaunchElevated("--clean-once"); err != nil {
-			writeError(w, http.StatusInternalServerError, "未能请求管理员权限：可能已取消，或系统不允许提升。仍可使用「立即清理」收缩有权限的工作集。")
-			return
-		}
-		// The elevated process writes last-clean.json; pick it up shortly.
-		go func() {
-			deadline := time.Now().Add(30 * time.Second)
-			for time.Now().Before(deadline) {
-				time.Sleep(800 * time.Millisecond)
-				if last := readLastCleanFile(); last != nil && last.At.After(state.startedAt.Add(-time.Second)) {
-					state.mu.Lock()
-					if state.lastClean == nil || last.At.After(state.lastClean.At) {
-						state.lastClean = last
-					}
-					state.mu.Unlock()
-					return
-				}
+			if _, err := state.runClean(cleanElevated); err != nil {
+				writeError(w, http.StatusConflict, err.Error())
+				return
 			}
-		}()
-		writeJSON(w, http.StatusOK, map[string]any{
-			"ok":      true,
-			"message": "已发出管理员权限请求。若你同意提升，完整清理会在后台完成，稍后刷新即可看到结果。若取消，仍可用「立即清理」做不需要管理员的部分。",
-		})
+			writeJSON(w, http.StatusOK, state.snapshot())
+			return
+		}
+		if err := state.startElevatedClean(relaunchElevated); err != nil {
+			if err == errCleanInProgress {
+				writeError(w, http.StatusConflict, err.Error())
+			} else {
+				writeError(w, http.StatusInternalServerError, "未能请求管理员权限：可能已取消，或系统不允许提升。仍可使用「立即清理」。")
+			}
+			return
+		}
+		writeJSON(w, http.StatusOK, struct {
+			statusPayload
+			OK      bool   `json:"ok"`
+			Message string `json:"message"`
+		}{state.snapshot(), true, "已发出管理员权限请求，完整清理会在后台完成。"})
 	})
 	mux.HandleFunc("/api/quit", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -238,11 +225,13 @@ func main() {
 
 	// Default: no settings window, no tray, no visible UI. The plugin talks to the API.
 	if uiMode {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
 		openSettingsWindow(uiURL())
 		if err := startTray(func() {
 			openSettingsWindow(uiURL())
 		}, func() {
-			state.runClean()
+			_, _ = state.runClean(cleanManual)
 		}, func() {
 			_ = server.Close()
 			signalQuit()
@@ -318,7 +307,7 @@ func (s *appState) autoLoop() {
 		due := now.Sub(anchor) >= time.Duration(cfg.IntervalSec)*time.Second
 		over := mem.UsedPercent >= float64(cfg.ThresholdPercent)
 		if due || over {
-			s.runClean()
+			_, _ = s.runClean(cleanAuto)
 		}
 	}
 }
@@ -328,7 +317,11 @@ func readLastCleanFile() *CleanReport {
 	if err != nil {
 		return nil
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "last-clean.json"))
+	return readCleanReport(filepath.Join(dir, "last-clean.json"))
+}
+
+func readCleanReport(path string) *CleanReport {
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil
 	}

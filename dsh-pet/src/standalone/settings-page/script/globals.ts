@@ -54,134 +54,177 @@ function formatRamBytes(bytes) {
   return Math.max(0, Math.round(bytes / (1024 * 1024))) + ' MB';
 }
 
+function systemMemoryToggle(input, title, hint) {
+  return make('label', { class: 'rowCheck' }, [
+    input,
+    make('span', { class: 'rowCheckText' }, [
+      make('span', { class: 'rowCheckTitle', text: title }),
+      make('span', { class: 'rowCheckHint', text: hint }),
+    ]),
+  ]);
+}
+
+function systemMemoryReport(report) {
+  const titles = { auto: '自动清理', manual: '手动清理', elevated: '管理员清理' };
+  const date = new Date(report.at);
+  const time = Number.isNaN(date.getTime()) ? '' : date.toLocaleString('zh-CN', {
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  });
+  const title = '上次' + (titles[report.trigger] || '清理') + (time ? ' · ' + time : '');
+  if (report.error) return title + ' · 清理失败 · ' + report.error;
+  const before = report.before?.usedBytes;
+  const after = report.after?.usedBytes;
+  if (!Number.isFinite(before) || !Number.isFinite(after) || before < 0 || after < 0) return title + ' · 暂无前后读数';
+  const change = before > after ? '已用减少 ' + formatRamBytes(before - after)
+    : after > before ? '已用增加 ' + formatRamBytes(after - before) : '已用未下降';
+  return title + ' · 已用 ' + formatRamBytes(before) + ' → ' + formatRamBytes(after) + '，' + change
+    + (report.standbyCleared ? '（已清空待机列表）' : '');
+}
+
 function systemMemoryCard() {
-  const usage = make('p', { class: 'cardHint', text: '正在启动内存清理帮手…' });
-  const last = make('p', { class: 'cardHint', text: '' });
-  const status = make('span', { class: 'cardHint', text: '' });
+  const health = make('p', { class: 'cardHint', text: '正在连接内存清理帮手…' });
+  const usage = make('p', { class: 'cardHint', hidden: true, text: '暂无当前内存占用读数。' });
+  const last = make('p', { class: 'cardHint', text: '暂无清理记录。' });
+  const status = make('span', { class: 'status', role: 'status' });
   const autoBox = make('input', { type: 'checkbox', id: 'g-sysmem-auto', checked: true });
+  const usageBox = make('input', { type: 'checkbox', id: 'g-sysmem-show-usage', checked: true });
+  const notifyBox = make('input', { type: 'checkbox', id: 'g-sysmem-notify' });
   const interval = make('input', { type: 'number', id: 'g-sysmem-interval', min: '30', max: '86400', step: '1', value: '1800' });
   const threshold = make('input', { type: 'number', id: 'g-sysmem-threshold', min: '50', max: '99', step: '1', value: '85' });
   const debounce = make('input', { type: 'number', id: 'g-sysmem-debounce', min: '10', step: '1', value: '120' });
-  const nowBtn = button('立即清理', async () => {
-    nowBtn.disabled = true;
-    status.textContent = '正在清理…';
-    try {
-      const body = await callApi('POST', '/system-memory');
-      applySystemMemory(body);
-      status.textContent = body && body.message ? body.message : (last.textContent || '已清理。');
-    } catch (error) {
-      status.textContent = (error && error.message) ? error.message : '清理失败，请稍后重试。';
-    } finally {
-      nowBtn.disabled = false;
-    }
-  });
-  const adminBtn = button('以管理员身份完整清理一次', async () => {
-    adminBtn.disabled = true;
-    status.textContent = '正在请求权限…';
-    try {
-      const body = await callApi('POST', '/system-memory/clean-elevated');
-      applySystemMemory(body);
-      status.textContent = body && body.message ? body.message : '已发出管理员权限请求。若你同意提升，完整清理会在后台完成。';
-    } catch (error) {
-      status.textContent = (error && error.message) ? error.message : '清理失败，请稍后重试。';
-    } finally {
-      adminBtn.disabled = false;
-    }
-  });
-  let current = { autoClean: true, intervalSec: 1800, thresholdPercent: 85, debounceSec: 120 };
-  let available = true;
+  const controls = {
+    autoClean: autoBox, showUsage: usageBox, notifyOnClean: notifyBox,
+    intervalSec: interval, thresholdPercent: threshold, debounceSec: debounce,
+  };
+  const nowBtn = button('立即清理', () => { void clean(false); });
+  const adminBtn = button('以管理员身份完整清理一次', () => { void clean(true); });
+  let current = { autoClean: true, showUsage: true, notifyOnClean: false, intervalSec: 1800, thresholdPercent: 85, debounceSec: 120 };
+  let available = false;
+  let busy = false;
+  let reading = false;
+  let revision = 0;
 
-  function setDisabled(disabled) {
-    autoBox.disabled = disabled;
-    interval.disabled = disabled;
-    threshold.disabled = disabled;
-    debounce.disabled = disabled;
-    nowBtn.disabled = disabled;
-    adminBtn.disabled = disabled;
+  function syncDisabled() {
+    for (const input of [...Object.values(controls), nowBtn, adminBtn]) input.disabled = !available || busy;
+  }
+
+  function paintControls() {
+    syncDisabled();
+    for (const [key, input] of Object.entries(controls)) {
+      if (input.type === 'checkbox') input.checked = current[key] === true;
+      else if (input !== document.activeElement) input.value = String(current[key]);
+    }
+    usage.hidden = !health.hidden || !current.showUsage;
   }
 
   function applySystemMemory(body) {
-    if (!body) return;
-    if (body.available === false) {
-      available = false;
-      setDisabled(true);
-      if (body.reason === 'not-windows') usage.textContent = '系统内存清理只在 Windows 上可用。';
-      else if (body.reason === 'helper-missing') usage.textContent = '没有找到系统内存清理帮手，请确认插件目录里有这份工具。';
-      else usage.textContent = body.message || '暂时无法连接到系统内存清理帮手。';
+    available = body?.available === true;
+    health.hidden = available && body.ok !== false;
+    if (!health.hidden) {
+      if (body?.reason === 'not-windows') health.textContent = '系统内存清理只在 Windows 上可用。';
+      else if (body?.reason === 'helper-missing') health.textContent = '没有找到系统内存清理帮手，请确认插件目录里有这份工具。';
+      else health.textContent = body?.message || '暂时无法连接到系统内存清理帮手。';
+    }
+    if (available) {
+      if (body.config) {
+        current = Object.assign({}, body.config, {
+          showUsage: body.config.showUsage !== false, notifyOnClean: body.config.notifyOnClean === true,
+        });
+      }
+      if (Number.isFinite(body.usedPercent)) {
+        const percent = (Math.round(body.usedPercent * 10) / 10) + '%';
+        usage.textContent = '内存占用 ' + percent + ' · 已用 ' + formatRamBytes(body.usedBytes)
+          + ' / ' + formatRamBytes(body.totalBytes) + '，可用 ' + formatRamBytes(body.availableBytes);
+      }
+      if (body.lastClean) last.textContent = systemMemoryReport(body.lastClean);
+      if (typeof body.isAdmin === 'boolean') adminBtn.hidden = body.isAdmin;
+    }
+    paintControls();
+  }
+
+  async function submit(path, data, loading, failure, onSuccess) {
+    if (!available || busy) return;
+    busy = true;
+    revision++;
+    syncDisabled();
+    setStatus(status, loading);
+    try {
+      const body = await callApi('POST', path, data);
+      if (!body?.ok) {
+        if (body?.available === false) applySystemMemory(body);
+        setStatus(status, body?.message || failure, 'error');
+      } else {
+        applySystemMemory(body);
+        onSuccess(body);
+      }
+    } catch (error) {
+      setStatus(status, error?.message || failure, 'error');
+    } finally {
+      busy = false;
+      paintControls();
+    }
+  }
+
+  function clean(elevated) {
+    const path = elevated ? '/system-memory/clean-elevated' : '/system-memory';
+    return submit(path, undefined, elevated ? '正在请求权限…' : '正在清理…', '清理失败，请稍后重试。', (body) => {
+      if (elevated && body.message) setStatus(status, body.message, 'ok');
+      else if (body.lastClean?.error) setStatus(status, '清理失败 · ' + body.lastClean.error, 'error');
+      else if (body.message) setStatus(status, body.message, 'ok');
+      else if (body.lastClean) setStatus(status, '清理已完成。', 'ok');
+      else setStatus(status, elevated ? '已请求管理员权限。' : '已请求清理。', 'ok');
+    });
+  }
+
+  function saveConfig(key, input) {
+    if (input.type === 'number' && (input.value === '' || !input.checkValidity())) {
+      setStatus(status, '请填写说明所列范围内的数值。', 'error');
       return;
     }
-    available = true;
-    setDisabled(false);
-    if (body.config) {
-      current = body.config;
-      autoBox.checked = current.autoClean === true;
-      interval.value = String(current.intervalSec);
-      threshold.value = String(current.thresholdPercent);
-      debounce.value = String(current.debounceSec);
-    }
-    if (typeof body.usedPercent === 'number' && typeof body.usedBytes === 'number' && typeof body.totalBytes === 'number') {
-      const availText = typeof body.availableBytes === 'number' ? formatRamBytes(body.availableBytes) : '—';
-      usage.textContent = '已用 ' + (Math.round(body.usedPercent * 10) / 10) + '%（' + formatRamBytes(body.usedBytes) + ' / ' + formatRamBytes(body.totalBytes) + '，可用 ' + availText + '）';
-    }
-    if (body.lastClean && body.lastClean.before && body.lastClean.after) {
-      const prefix = body.lastClean.standbyCleared ? '上次清理（已含待机列表）：已用从 ' : '上次清理：已用从 ';
-      last.textContent = prefix + formatRamBytes(body.lastClean.before.usedBytes || 0) + ' 降到 ' + formatRamBytes(body.lastClean.after.usedBytes || 0) + '。';
-    }
-    if (body.isAdmin === true) adminBtn.hidden = true;
-    if (body.ok === false && body.message) status.textContent = body.message;
+    const value = input.type === 'checkbox' ? input.checked : Math.round(Number(input.value));
+    const next = Object.assign({}, current, { [key]: value });
+    next.debounceSec = Math.min(next.intervalSec, next.debounceSec);
+    return submit('/system-memory/config', next, '正在保存…', '设置未能保存。', () => {
+      if (current[key] === next[key]) setStatus(status, '已保存。', 'ok');
+      else setStatus(status, '帮手未确认该设置。', 'error');
+    });
   }
 
-  async function saveConfig() {
-    if (!available) return;
-    const intervalSec = Math.round(Number(interval.value));
-    const thresholdPercent = Math.round(Number(threshold.value));
-    let debounceSec = Math.round(Number(debounce.value));
-    if (!Number.isFinite(intervalSec) || !Number.isFinite(thresholdPercent) || !Number.isFinite(debounceSec)) return;
-    if (debounceSec > intervalSec) debounceSec = intervalSec;
-    current = { autoClean: autoBox.checked, intervalSec: intervalSec, thresholdPercent: thresholdPercent, debounceSec: debounceSec };
-    status.textContent = '正在保存…';
-    try {
-      const body = await callApi('POST', '/system-memory/config', current);
-      applySystemMemory(body);
-      if (body && body.ok === false) status.textContent = body.message || '设置未能保存。';
-      else status.textContent = '已保存。';
-    } catch (error) {
-      status.textContent = (error && error.message) ? error.message : '设置未能保存。';
-    }
+  for (const [key, input] of Object.entries(controls)) {
+    input.addEventListener('change', () => { void saveConfig(key, input); });
   }
-
-  autoBox.addEventListener('change', () => { void saveConfig(); });
-  interval.addEventListener('change', () => { void saveConfig(); });
-  threshold.addEventListener('change', () => { void saveConfig(); });
-  debounce.addEventListener('change', () => { void saveConfig(); });
-
-  void (async function refreshSystemMemory() {
-    try {
-      applySystemMemory(await callApi('GET', '/system-memory'));
-    } catch (error) {
-      usage.textContent = (error && error.message) ? error.message : '暂时无法连接到系统内存清理帮手。';
-    }
-  })();
-  setInterval(() => {
-    if (!available) return;
-    void callApi('GET', '/system-memory').then(applySystemMemory).catch(() => undefined);
-  }, 2000);
-
-  return card('系统内存清理', '回收整机可释放的物理内存：收缩各进程工作集；若以管理员身份清理，还可清空待机列表。不会结束其他程序，也不删除对话记录。这和下面的「清理缓存」不是一回事。改动会立刻生效，不必点页面底部的「保存」。', [
+  const panel = card('系统内存清理', '收缩各进程工作集，管理员清理还可清空待机列表。此处设置改动后立即保存。', [
+    health,
     usage,
     last,
-    make('label', { class: 'rowCheck' }, [
-      autoBox,
-      make('span', { class: 'rowCheckText' }, [
-        make('span', { class: 'rowCheckTitle', text: '启用自动清理' }),
-        make('span', { class: 'rowCheckHint', text: '关掉后不再按定时或占用阈值自动清理；「立即清理」仍然可用。' }),
-      ]),
-    ]),
+    systemMemoryToggle(autoBox, '启用自动清理', '按定时间隔或占用阈值清理。手动清理始终可以使用。'),
+    systemMemoryToggle(usageBox, '显示当前内存占用', '在此卡片显示使用率、已用内存和可用内存。'),
+    systemMemoryToggle(notifyBox, '清理完成后通知', '由 Windows 系统通知报告清理结果，设置页关闭时也适用。'),
     fieldRow('g-sysmem-interval', '定时间隔（秒）', interval, '从上次清理或帮手启动起算。到点就清一次；若占用先达到阈值，会提前清理。须在 30 到 86400 秒之间。'),
     fieldRow('g-sysmem-threshold', '占用阈值（%）', threshold, '已用物理内存达到该百分比就提前清理。须在 50% 到 99% 之间。'),
     fieldRow('g-sysmem-debounce', '最短间隔（秒）', debounce, '两次自动清理的最短间隔，须不小于 10 秒，且不能大于定时间隔。'),
     make('div', { class: 'row' }, [nowBtn, adminBtn, status]),
   ]);
+  paintControls();
+  async function refreshSystemMemory() {
+    if (!panel.isConnected || busy || reading) return;
+    reading = true;
+    const started = revision;
+    let body;
+    try {
+      body = await callApi('GET', '/system-memory');
+    } catch (error) {
+      body = { available: false, message: error?.message };
+    }
+    reading = false;
+    if (started === revision && panel.isConnected) applySystemMemory(body);
+  }
+  const refreshTimer = setInterval(() => {
+    if (panel.isConnected) void refreshSystemMemory();
+    else clearInterval(refreshTimer);
+  }, 2000);
+  void Promise.resolve().then(refreshSystemMemory);
+  return panel;
 }
 
 function cleanupCard() {

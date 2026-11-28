@@ -13,23 +13,23 @@ import (
 const (
 	systemMemoryListInformation = 80
 
-	memoryEmptyWorkingSets           = 2
-	memoryPurgeStandbyList           = 4
+	memoryEmptyWorkingSets            = 2
+	memoryPurgeStandbyList            = 4
 	memoryPurgeLowPriorityStandbyList = 5
 
-	processSetQuota               = 0x0100
+	processSetQuota                = 0x0100
 	processQueryLimitedInformation = 0x1000
 )
 
 var (
-	modpsapi   = windows.NewLazySystemDLL("psapi.dll")
-	modntdll   = windows.NewLazySystemDLL("ntdll.dll")
-	modkernel  = windows.NewLazySystemDLL("kernel32.dll")
+	modpsapi  = windows.NewLazySystemDLL("psapi.dll")
+	modntdll  = windows.NewLazySystemDLL("ntdll.dll")
+	modkernel = windows.NewLazySystemDLL("kernel32.dll")
 
-	procEmptyWorkingSet          = modpsapi.NewProc("EmptyWorkingSet")
-	procNtSetSystemInformation   = modntdll.NewProc("NtSetSystemInformation")
-	procGlobalMemoryStatusEx     = modkernel.NewProc("GlobalMemoryStatusEx")
-	procK32EmptyWorkingSet       = modkernel.NewProc("K32EmptyWorkingSet")
+	procEmptyWorkingSet        = modpsapi.NewProc("EmptyWorkingSet")
+	procNtSetSystemInformation = modntdll.NewProc("NtSetSystemInformation")
+	procGlobalMemoryStatusEx   = modkernel.NewProc("GlobalMemoryStatusEx")
+	procK32EmptyWorkingSet     = modkernel.NewProc("K32EmptyWorkingSet")
 )
 
 type memoryStatusEx struct {
@@ -54,16 +54,17 @@ type MemSnap struct {
 
 // CleanReport describes one cleanup attempt.
 type CleanReport struct {
-	At                 time.Time `json:"at"`
-	IsAdmin            bool      `json:"isAdmin"`
-	WorkingSetsOK      bool      `json:"workingSetsOK"`
-	StandbyCleared     bool      `json:"standbyCleared"`
-	StandbySkipped     string    `json:"standbySkipped,omitempty"`
-	ProcessesTrimmed   int       `json:"processesTrimmed"`
-	ProcessesFailed    int       `json:"processesFailed"`
-	Before             MemSnap   `json:"before"`
-	After              MemSnap   `json:"after"`
-	Error              string    `json:"error,omitempty"`
+	At               time.Time `json:"at"`
+	Trigger          string    `json:"trigger,omitempty"`
+	IsAdmin          bool      `json:"isAdmin"`
+	WorkingSetsOK    bool      `json:"workingSetsOK"`
+	StandbyCleared   bool      `json:"standbyCleared"`
+	StandbySkipped   string    `json:"standbySkipped,omitempty"`
+	ProcessesTrimmed int       `json:"processesTrimmed"`
+	ProcessesFailed  int       `json:"processesFailed"`
+	Before           MemSnap   `json:"before"`
+	After            MemSnap   `json:"after"`
+	Error            string    `json:"error,omitempty"`
 }
 
 func readMemory() (MemSnap, error) {

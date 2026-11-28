@@ -3,16 +3,19 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 )
 
 // Config is persisted under %APPDATA%/mido-ram-cleaner/config.json.
 type Config struct {
-	AutoClean         bool `json:"autoClean"`
-	IntervalSec       int  `json:"intervalSec"`
-	ThresholdPercent  int  `json:"thresholdPercent"`
-	DebounceSec       int  `json:"debounceSec"`
+	AutoClean        bool `json:"autoClean"`
+	IntervalSec      int  `json:"intervalSec"`
+	ThresholdPercent int  `json:"thresholdPercent"`
+	DebounceSec      int  `json:"debounceSec"`
+	ShowUsage        bool `json:"showUsage"`
+	NotifyOnClean    bool `json:"notifyOnClean"`
 }
 
 func defaultConfig() Config {
@@ -21,7 +24,23 @@ func defaultConfig() Config {
 		IntervalSec:      1800,
 		ThresholdPercent: 85,
 		DebounceSec:      120,
+		ShowUsage:        true,
 	}
+}
+
+var errInvalidConfigJSON = errors.New("设置格式无效")
+
+// Decode over the saved/default configuration so omitted fields retain their values.
+func decodeConfig(body io.Reader, base Config) (Config, error) {
+	cfg := &base
+	decoder := json.NewDecoder(body)
+	if err := decoder.Decode(&cfg); err != nil || cfg == nil {
+		return Config{}, errInvalidConfigJSON
+	}
+	if err := validateConfig(*cfg); err != nil {
+		return Config{}, err
+	}
+	return *cfg, nil
 }
 
 func validateConfig(c Config) error {
@@ -71,7 +90,7 @@ func loadConfig() Config {
 	if err != nil {
 		return cfg
 	}
-	var parsed Config
+	parsed := cfg
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return cfg
 	}
@@ -94,5 +113,23 @@ func saveConfig(cfg Config) error {
 		return err
 	}
 	raw = append(raw, '\n')
-	return os.WriteFile(path, raw, 0o644)
+	return writeStateFile(path, raw)
+}
+
+// Write into the same directory and publish only a complete JSON document.
+func writeStateFile(path string, raw []byte) error {
+	file, err := os.CreateTemp(filepath.Dir(path), ".mido-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	_, writeErr := file.Write(raw)
+	closeErr := file.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return os.Rename(file.Name(), path)
 }
