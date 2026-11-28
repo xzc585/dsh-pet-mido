@@ -42,9 +42,10 @@ interface ElectronApp {
   on(event: 'second-instance', listener: () => void): void;
   on(event: 'will-quit', listener: () => void): void;
 }
-const { app, session } = createRequire(import.meta.url)('electron') as {
+const { app, session, shell } = createRequire(import.meta.url)('electron') as {
   app: ElectronApp;
   session: { defaultSession: DesktopSession };
+  shell: { openExternal(url: string): Promise<void> };
 };
 
 /** 包根目录：与 helper-process.ts 的 packageRoot 同一口径（模块所在目录的上一级） */
@@ -129,6 +130,7 @@ async function boot(): Promise<void> {
     log,
     retarget: async (session) => {
       applySessionEnv(session);
+      process.env.DSH_PET_PETS = JSON.stringify(session.pets ?? desktopPets());
       try {
         authHandle?.update(new URL(session.configUrl).origin, session.token);
       } catch {
@@ -165,7 +167,7 @@ async function boot(): Promise<void> {
   log(`apply() 完成：routes=${routes.length} 失败=${context.failures.length}`);
 
   // helper 读它决定建几个窗口；读不到时它会回落到单个默认窗口，首帧再由渲染端自校正
-  process.env.DSH_PET_PETS = JSON.stringify(desktopPets());
+  process.env.DSH_PET_PETS = JSON.stringify(bootSession.pets ?? desktopPets());
 
   // 同进程跑 Helper：建窗、托盘、IPC、碰撞都在它内部完成（CJS，需要 require）。
   // 渲染端日志必须转出来——打包后的应用没有控制台，渲染端报错只会表现成「窗口透明」。
@@ -196,11 +198,11 @@ async function boot(): Promise<void> {
   } finally {
     delete process.env.DSH_PET_APP_TOKEN;
   }
-  connect.markHelperReady();
+  void app.whenReady().then(connect.markHelperReady);
 
   app.on('second-instance', () => {
-    log('已有一个实例在运行，忽略本次启动');
-    (globalThis as { __dshPetFocusWindows?: () => void }).__dshPetFocusWindows?.();
+    if ((globalThis as { __dshPetFocusWindows?: () => boolean }).__dshPetFocusWindows?.()) return;
+    void shell.openExternal(security.authenticatedUrl(origin)).catch(() => log('无法打开本机设置页'));
   });
   app.on('will-quit', () => {
     // 退出前把最后一批日志刷出去（定时器最多 1s，这里显式补一次）

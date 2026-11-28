@@ -72,9 +72,7 @@ export function apply(ctx: any): void {
     const seeded = seedBundledPetPacks(petConfigDir);
     if (seeded.length) log.info('[dsh-pet] 已写入内置宠物种类：' + seeded.join('、'));
   } catch (error) {
-    log.warn(
-      '[dsh-pet] 内置宠物种类未能写入：' + (error instanceof Error ? error.message : String(error)),
-    );
+    log.warn('[dsh-pet] 内置宠物种类未能写入：' + (error instanceof Error ? error.message : String(error)));
   }
   const workStatusBridge = createWorkStatusBridge({ state, workStatus, EXTERNAL_WORK_SESSION });
   const { publishWorkStatus, stopWorkStatusFlush } = workStatusBridge;

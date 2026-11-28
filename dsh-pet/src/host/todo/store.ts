@@ -6,8 +6,9 @@
  * 任何一步失败都原样抛出，由路由归一成内部错误；不静默丢用户的待办。
  * @module dsh-pet/src/host/todo/store
  */
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { writeTextAtomically } from '../atomic-file.ts';
 import { cloneTodo, parseTodoFile, sortTodos, TODO_FILE_VERSION, type TodoFile, type TodoRecord } from './types.ts';
 import type { LoggerLike } from '../log-file.ts';
 
@@ -174,17 +175,17 @@ export class TodoStore {
     try {
       raw = await readFile(this.file, 'utf8');
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        this.log.warn?.(`[dsh-pet] 待办文件读取失败，按空清单继续：${messageOf(error)}`);
-      }
-      return [];
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      this.log.warn?.(`[dsh-pet] 待办文件读取失败：${messageOf(error)}`);
+      throw error;
     }
     try {
-      return parseTodoFile(JSON.parse(raw));
+      const parsed = JSON.parse(raw) as { todos?: unknown } | null;
+      if (!Array.isArray(parsed?.todos)) throw new Error('todos 必须为数组');
+      return parseTodoFile(parsed);
     } catch (error) {
-      // 坏文件不备份、不改写：先按空清单跑，下一次写入自然覆盖。
-      this.log.warn?.(`[dsh-pet] 待办文件解析失败，按空清单继续：${messageOf(error)}`);
-      return [];
+      this.log.warn?.('[dsh-pet] 待办文件解析失败，已保留原文件');
+      throw new Error('待办文件无法解析，请修复文件后重试。', { cause: error });
     }
   }
 
@@ -192,9 +193,7 @@ export class TodoStore {
   private async persist(next: readonly TodoRecord[]): Promise<void> {
     const file: TodoFile = { version: TODO_FILE_VERSION, todos: [...next] };
     await mkdir(dirname(this.file), { recursive: true });
-    const temp = this.file + '.tmp';
-    await writeFile(temp, JSON.stringify(file, null, 2) + '\n', 'utf8');
-    await rename(temp, this.file);
+    await writeTextAtomically(this.file, JSON.stringify(file, null, 2) + '\n');
     this.cached = [...next];
   }
 }

@@ -6,14 +6,14 @@
  * 这里只在跑完后写一条 `sections.memoryCleanup`，让页面把后台视频松开。
  * @module dsh-pet/src/host/memory-cleanup
  */
-import { readdir, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { readAllConfig, type ConfigPaths } from './config.ts';
 import { resetUapiCache } from './uapi.ts';
-import { pruneCache } from './voice/cache.ts';
+import { pruneScannedCache, scanVoiceCache } from './voice/cache.ts';
 import type { PollStateStore } from './state.ts';
 import type { FileLogger } from './log-file.ts';
 import {
+  canCheckMemoryCleanup,
   decideMemoryCleanup,
   readMemoryCleanup,
   type CleanupReason,
@@ -72,27 +72,11 @@ export function resetMemoryCleanupClock(): void {
  * @param dir - `voice-cache` 目录。
  */
 export async function voiceCacheBytes(dir: string): Promise<number> {
-  let names: string[];
-  try {
-    names = await readdir(dir);
-  } catch {
-    return 0;
-  }
-  let total = 0;
-  for (const name of names) {
-    if (!name.endsWith('.mp3') && !name.endsWith('.wav')) continue;
-    try {
-      total += (await stat(join(dir, name))).size;
-    } catch {
-      /* 正被别的请求删掉 */
-    }
-  }
-  return total;
+  return (await scanVoiceCache(dir)).bytes;
 }
 
-/** 用户数据根：主配置文件所在目录。 */
-function userRootOf(paths: ConfigPaths): string {
-  return dirname(paths.userFile);
+function voiceCacheDir(paths: ConfigPaths): string {
+  return join(dirname(paths.userFile), 'voice-cache');
 }
 
 /**
@@ -101,7 +85,7 @@ function userRootOf(paths: ConfigPaths): string {
  * 进程用 heapUsed（本进程堆），缓存用语音文件体积。两者任一到阈值都算到。
  */
 export async function measureHostMemory(paths: ConfigPaths): Promise<{ processBytes: number; cacheBytes: number }> {
-  const cacheBytes = await voiceCacheBytes(join(userRootOf(paths), 'voice-cache'));
+  const cacheBytes = await voiceCacheBytes(voiceCacheDir(paths));
   return { processBytes: process.memoryUsage().heapUsed, cacheBytes };
 }
 
@@ -117,31 +101,39 @@ export async function runHostMemoryCleanup(
   reason: CleanupReason,
   now = Date.now(),
 ): Promise<MemoryCleanupReport> {
-  const measured = await measureHostMemory(deps.configPaths);
-  const dir = join(userRootOf(deps.configPaths), 'voice-cache');
-  const removed = await pruneCache(dir, { maxBytes: 0, maxFiles: 0 });
+  const cache = await scanVoiceCache(voiceCacheDir(deps.configPaths));
+  return clearMeasuredCache(deps, reason, now, cache, process.memoryUsage().heapUsed);
+}
+
+async function clearMeasuredCache(
+  deps: MemoryCleanupDeps,
+  reason: CleanupReason,
+  now: number,
+  cache: Awaited<ReturnType<typeof scanVoiceCache>>,
+  processBytes: number,
+): Promise<MemoryCleanupReport> {
+  const removed = await pruneScannedCache(cache, { maxBytes: 0, maxFiles: 0 });
   resetUapiCache();
-  const freedBytes = measured.cacheBytes;
   generation += 1;
-  lastRunAt = now;
+  lastRunAt = Math.max(lastRunAt ?? now, now);
   const report: MemoryCleanupReport = {
     generation,
     reason,
     at: now,
-    freedBytes,
-    processBytes: measured.processBytes,
-    cacheBytes: measured.cacheBytes,
+    freedBytes: removed.bytes,
+    processBytes,
+    cacheBytes: cache.bytes,
   };
   deps.state.writeSection('memoryCleanup', report);
   deps.log.info(
     '[dsh-pet] 清理内存 reason=' +
       reason +
       ' freedBytes=' +
-      String(freedBytes) +
+      String(removed.bytes) +
       ' voiceFiles=' +
-      String(removed) +
+      String(removed.files) +
       ' heap=' +
-      String(measured.processBytes),
+      String(processBytes),
   );
   return report;
 }
@@ -162,19 +154,25 @@ export function hostCleanupConfig(paths: ConfigPaths): MemoryCleanupConfig {
  * @param deps - 配置、状态与日志。
  * @param now - 当前时刻，测试注入。
  */
-export async function tickHostMemoryCleanup(deps: MemoryCleanupDeps, now = Date.now()): Promise<MemoryCleanupReport | null> {
+export async function tickHostMemoryCleanup(
+  deps: MemoryCleanupDeps,
+  now = Date.now(),
+): Promise<MemoryCleanupReport | null> {
   ensureClock(now);
   const config = hostCleanupConfig(deps.configPaths);
-  const measured = await measureHostMemory(deps.configPaths);
+  if (!canCheckMemoryCleanup({ ...config, now, lastRunAt })) return null;
+  const cache = await scanVoiceCache(voiceCacheDir(deps.configPaths));
+  const processBytes = process.memoryUsage().heapUsed;
   const decision = decideMemoryCleanup({
     ...config,
     now,
     lastRunAt,
     startedAt,
-    ...measured,
+    processBytes,
+    cacheBytes: cache.bytes,
   });
   if (!decision.run || decision.reason === null) return null;
-  return runHostMemoryCleanup(deps, decision.reason, now);
+  return clearMeasuredCache(deps, decision.reason, now, cache, processBytes);
 }
 
 /**
@@ -207,7 +205,9 @@ export async function memoryCleanupStatus(paths: ConfigPaths): Promise<{
  *
  * @param deps - 宿主上下文加上清理依赖。ctx 只用来登记 effect。
  */
-export function registerMemoryCleanupLoop(deps: MemoryCleanupDeps & { ctx: { effect: (setup: () => void, label: string) => void } }): void {
+export function registerMemoryCleanupLoop(
+  deps: MemoryCleanupDeps & { ctx: { effect: (setup: () => void, label: string) => void } },
+): void {
   const { ctx, ...rest } = deps;
   ctx.effect(() => {
     let disposed = false;

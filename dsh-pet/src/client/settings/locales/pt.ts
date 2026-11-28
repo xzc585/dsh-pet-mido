@@ -323,43 +323,56 @@ export const pt: Record<Key, string> = {
   'motion.action': 'Ação aleatória',
   // Limpeza de cache (caches do plugin, não a RAM do sistema)
   cleanupTitle: 'Limpeza de cache',
-  cleanupHint: 'Liberta a cache de animações, os descodificadores de vídeo em segundo plano e os ficheiros de voz deste plugin. Não limpa a RAM do sistema, não apaga o histórico de conversa nem altera a memória de longo prazo. Para recuperar memória de todo o computador, usa «Limpeza de memória do sistema» acima. Dispara o que chegar primeiro: o intervalo ou o limiar de utilização. Um intervalo mínimo evita execuções automáticas seguidas. O botão manual continua disponível se desligares a opção.',
+  cleanupHint:
+    'Liberta a cache de animações, os descodificadores de vídeo em segundo plano e os ficheiros de voz deste plugin. Não limpa a RAM do sistema, não apaga o histórico de conversa nem altera a memória de longo prazo. Para recuperar memória de todo o computador, usa «Limpeza de memória do sistema» acima. Dispara o que chegar primeiro: o intervalo ou o limiar de utilização. Um intervalo mínimo evita execuções automáticas seguidas. O botão manual continua disponível se desligares a opção.',
   cleanupEnabled: 'Ativar a limpeza programada',
-  cleanupEnabledHint: 'Quando está desligada, o temporizador e o limiar não correm sozinhos. «Limpar agora» continua disponível.',
+  cleanupEnabledHint:
+    'Quando está desligada, o temporizador e o limiar não correm sozinhos. «Limpar agora» continua disponível.',
   cleanupIntervalLabel: 'Intervalo (segundos)',
-  cleanupIntervalHint: 'Conta a partir da última limpeza ou do arranque do processo. Se a utilização atingir o limiar primeiro, a limpeza acontece mais cedo.',
+  cleanupIntervalHint:
+    'Conta a partir da última limpeza ou do arranque do processo. Se a utilização atingir o limiar primeiro, a limpeza acontece mais cedo.',
   cleanupThresholdLabel: 'Limiar (MB)',
-  cleanupThresholdHint: 'A limpeza é antecipada se o heap do processo ou as caches desta extensão (ficheiros de voz / animações) atingirem este tamanho.',
+  cleanupThresholdHint:
+    'A limpeza é antecipada se o heap do processo ou as caches desta extensão (ficheiros de voz / animações) atingirem este tamanho.',
   cleanupDebounceLabel: 'Intervalo mínimo (segundos)',
-  cleanupDebounceHint: 'Tempo mínimo entre limpezas automáticas. Não deve exceder o intervalo, para que um limiar sempre alto não dispare em ciclo.',
+  cleanupDebounceHint:
+    'Tempo mínimo entre limpezas automáticas. Não deve exceder o intervalo, para que um limiar sempre alto não dispare em ciclo.',
   cleanupNow: 'Limpar agora',
   cleanupDone: 'Limpeza concluída. Foram libertados cerca de {bytes} bytes.',
   cleanupFailed: 'A limpeza falhou. Tenta novamente mais tarde.',
   // Limpeza de memória do sistema (RAM de todo o computador, não a cache do plugin)
   systemMemoryTitle: 'Limpeza de memória do sistema',
-  systemMemoryHint: 'Recupera a RAM física que pode ser libertada: reduz o conjunto de trabalho dos processos e, com permissões de administrador, também pode limpar a lista de espera. Não fecha outros programas nem apaga o histórico de conversa. Isto não é o mesmo que «Limpeza de cache» abaixo. As alterações aplicam-se de imediato; não precisas de carregar em Guardar no fundo da página.',
+  systemMemoryHint:
+    'Recupera a RAM física que pode ser libertada: reduz o conjunto de trabalho dos processos e, com permissões de administrador, também pode limpar a lista de espera. Não fecha outros programas nem apaga o histórico de conversa. Isto não é o mesmo que «Limpeza de cache» abaixo. As alterações aplicam-se de imediato; não precisas de carregar em Guardar no fundo da página.',
   systemMemoryUsage: 'Utilização atual',
   systemMemoryUsageValue: '{percent}% em uso ({used} / {total}, {avail} disponível)',
   systemMemoryAuto: 'Ativar limpeza automática',
-  systemMemoryAutoHint: 'Se desligares, a limpeza automática por intervalo ou limiar deixa de correr. «Limpar agora» continua disponível.',
+  systemMemoryAutoHint:
+    'Se desligares, a limpeza automática por intervalo ou limiar deixa de correr. «Limpar agora» continua disponível.',
   systemMemoryIntervalLabel: 'Intervalo (segundos)',
-  systemMemoryIntervalHint: 'Conta a partir da última limpeza ou do arranque do auxiliar. Se a utilização atingir o limiar primeiro, antecipa. Tem de estar entre 30 e 86400 segundos.',
+  systemMemoryIntervalHint:
+    'Conta a partir da última limpeza ou do arranque do auxiliar. Se a utilização atingir o limiar primeiro, antecipa. Tem de estar entre 30 e 86400 segundos.',
   systemMemoryThresholdLabel: 'Limiar de utilização (%)',
-  systemMemoryThresholdHint: 'A limpeza antecipa-se quando a memória física usada atinge esta percentagem. Tem de estar entre 50% e 99%.',
+  systemMemoryThresholdHint:
+    'A limpeza antecipa-se quando a memória física usada atinge esta percentagem. Tem de estar entre 50% e 99%.',
   systemMemoryDebounceLabel: 'Intervalo mínimo (segundos)',
-  systemMemoryDebounceHint: 'Tempo mínimo entre limpezas automáticas. Não pode ser inferior a 10 segundos nem superior ao intervalo.',
+  systemMemoryDebounceHint:
+    'Tempo mínimo entre limpezas automáticas. Não pode ser inferior a 10 segundos nem superior ao intervalo.',
   systemMemoryNow: 'Limpar agora',
   systemMemoryElevated: 'Limpeza completa como administrador',
-  systemMemoryElevatedHint: 'O Windows vai pedir permissão. Se recusares, «Limpar agora» ainda pode reduzir os conjuntos de trabalho a que tens acesso.',
+  systemMemoryElevatedHint:
+    'O Windows vai pedir permissão. Se recusares, «Limpar agora» ainda pode reduzir os conjuntos de trabalho a que tens acesso.',
   systemMemoryLastClean: 'Última limpeza: a utilização passou de {before} para {after}.',
-  systemMemoryLastCleanAdmin: 'Última limpeza: a utilização passou de {before} para {after} (inclui a lista de espera).',
+  systemMemoryLastCleanAdmin:
+    'Última limpeza: a utilização passou de {before} para {after} (inclui a lista de espera).',
   systemMemoryUnavailable: 'Não foi possível ligar agora ao auxiliar de memória do sistema.',
   systemMemoryMissing: 'O auxiliar de memória do sistema não foi encontrado. Confirma que está na pasta do plugin.',
   systemMemoryNotWindows: 'A limpeza de memória do sistema só está disponível no Windows.',
   systemMemoryFailed: 'A limpeza falhou. Tenta novamente mais tarde.',
   systemMemorySaved: 'Guardado.',
   systemMemorySaveFailed: 'Não foi possível guardar as definições: {error}',
-  systemMemoryElevatedSent: 'Foi enviado um pedido de administrador. Se aceitares, a limpeza completa termina em segundo plano.',
+  systemMemoryElevatedSent:
+    'Foi enviado um pedido de administrador. Se aceitares, a limpeza completa termina em segundo plano.',
   systemMemoryHelperStarting: 'A iniciar o auxiliar de limpeza de memória…',
   systemMemoryDone: 'Limpeza concluída.',
   uninstallCmd: 'dsh plugin --profile {profile} remove dsh-pet',

@@ -1683,7 +1683,6 @@ describe('removeRoundsByTs —— 按轮删除（一轮两条共享 ts，成对�
   });
 });
 
-
 describe('saveUserConfig —— 清理内存（memoryCleanup）', () => {
   test('合法段原样写入，和长期记忆 memory 互不影响', () => {
     const cleanup = { enabled: false, intervalSec: 90, thresholdMb: 256, debounceSec: 30 };

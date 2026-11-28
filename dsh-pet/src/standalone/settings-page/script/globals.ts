@@ -50,7 +50,7 @@ function pickCleanup(raw) {
 function formatRamBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes < 0) return '—';
   const gb = bytes / (1024 * 1024 * 1024);
-  if (gb >= 1) return (Math.round(gb * 10) / 10).toFixed(1).replace(/\.0$/, '') + ' GB';
+  if (gb >= 1) return (Math.round(gb * 10) / 10).toFixed(1).replace(/[.]0$/, '') + ' GB';
   return Math.max(0, Math.round(bytes / (1024 * 1024))) + ' MB';
 }
 

@@ -14,6 +14,7 @@ const pet = {
   name: 'Blue',
   size: 240,
   display: 'web',
+  balanceEnabled: true,
   position: { corner: 'top-right', marginX: 20, marginY: 20 },
 };
 const defaults = {
@@ -30,6 +31,10 @@ const defaults = {
       throwPower: 1,
       ceilingBounce: false,
       petCollision: false,
+      hapticEnabled: true,
+      tiltGravity: true,
+      shakeThrow: true,
+      dragSpring: true,
     },
     whisperModel: { provider: '', model: '' },
     chatModel: { provider: '', model: '' },
@@ -48,7 +53,17 @@ const customized = {
     chatImageLimit: 2,
     whisperModel: { provider: 'test', model: 'model' },
     chatModel: { provider: 'test', model: 'model' },
-    physics: { ...defaults.main.physics, gravity: 1200, throwPower: 2, ceilingBounce: true, petCollision: true },
+    physics: {
+      ...defaults.main.physics,
+      gravity: 1200,
+      throwPower: 2,
+      ceilingBounce: true,
+      petCollision: true,
+      hapticEnabled: false,
+      tiltGravity: false,
+      shakeThrow: false,
+      dragSpring: false,
+    },
   },
 };
 let browser, server, url;
@@ -126,6 +141,16 @@ async function save(page) {
   ]);
 }
 
+async function assertSaveDisabled(page) {
+  const buttons = await page.getByRole('button', { name: 'Save', exact: true }).all();
+  assert.ok(buttons.length > 0);
+  assert.ok((await Promise.all(buttons.map((button) => button.isDisabled()))).every(Boolean));
+}
+
+function withMainAssetRoot(pets) {
+  return pets.map((pet) => ({ ...pet, assetRoot: 'main' }));
+}
+
 test('config save errors: write failures keep edits visible and allow a retry', async (t) => {
   let attempts = 0;
   const { page, writes } = await open(t, {
@@ -154,7 +179,7 @@ test('config save errors: write failures keep edits visible and allow a retry', 
 
 test('config save errors: validation failures explain the rejected configuration', async (t) => {
   const { page } = await open(t, {
-    put: (route) => route.fulfill({ status: 400, json: { error: 'invalid pet config' } }),
+    put: (route) => route.fulfill({ json: { ok: false, reason: 'bad-request', message: 'invalid pet config' } }),
   });
   await save(page);
   await page
@@ -200,7 +225,7 @@ test('pending config prevents editing and saving placeholder defaults', async (t
     },
   });
   try {
-    assert.equal(await page.getByRole('button', { name: 'Save', exact: true }).isDisabled(), true);
+    await assertSaveDisabled(page);
     assert.equal(await page.locator('input[type=text]').first().isDisabled(), true);
     assert.deepEqual(writes, []);
   } finally {
@@ -222,13 +247,15 @@ for (const failure of ['http', 'network', 'malformed', 'null']) {
               ),
     });
     await page.getByRole('alert').waitFor();
-    assert.equal(await page.getByRole('button', { name: 'Save', exact: true }).isDisabled(), true);
+    await assertSaveDisabled(page);
     assert.deepEqual(writes, []);
     fail = false;
     await page.getByRole('button', { name: 'Retry', exact: true }).click();
     await save(page);
     assert.equal(writes.length, 1);
-    for (const [key, value] of Object.entries(customized.main)) assert.deepEqual(writes[0][key], value, key);
+    for (const [key, value] of Object.entries(customized.main)) {
+      assert.deepEqual(writes[0][key], key === 'pets' ? withMainAssetRoot(value) : value, key);
+    }
   });
 }
 
@@ -240,14 +267,16 @@ test('Sync updates all controls so a subsequent Save preserves the restored defa
   await page.getByRole('button', { name: 'Sync', exact: true }).last().click();
   await save(page);
   assert.equal(writes.length, 2);
-  for (const [key, value] of Object.entries(defaults.main)) assert.deepEqual(writes[1][key], value, key);
+  for (const [key, value] of Object.entries(defaults.main)) {
+    assert.deepEqual(writes[1][key], key === 'pets' ? withMainAssetRoot(value) : value, key);
+  }
 });
 
 test('fresh config refreshes the pet list instead of saving an old bridge snapshot', async (t) => {
   const fresh = { main: { ...customized.main, pets: [{ ...pet, name: 'Updated elsewhere', size: 360 }] } };
   const { page, writes } = await open(t, { get: fresh });
   await save(page);
-  assert.deepEqual(writes[0].pets, fresh.main.pets);
+  assert.deepEqual(writes[0].pets, withMainAssetRoot(fresh.main.pets));
 });
 
 for (const lang of ['en', 'zh']) {
@@ -275,18 +304,28 @@ for (const lang of ['en', 'zh']) {
 test('model picker remains anchored while the responsive settings panel is scrolled', async (t) => {
   const { page, writes } = await open(t, { viewport: { width: 900, height: 700 } });
   const trigger = page.locator('.dsh-pet-mp__trigger').first();
+  await trigger.evaluate((element) => element.scrollIntoView({ block: 'center' }));
   await trigger.click();
-  const panel = page.getByRole('menu');
+  const panel = page.getByRole('menu', { name: 'Whisper model' });
   await panel.waitFor();
-  for (const scrollY of [0, 120]) {
+  const initialScroll = await page.evaluate(() => window.scrollY);
+  assert.ok(initialScroll > 120);
+  for (const scrollY of [initialScroll, initialScroll - 120]) {
     await page.evaluate((y) => window.scrollTo(0, y), scrollY);
-    await page.waitForFunction(() => {
-      const trigger = document.querySelector('.dsh-pet-mp__trigger').getBoundingClientRect();
+    await page.waitForFunction((y) => {
+      const anchor = document.querySelector('.dsh-pet-mp').getBoundingClientRect();
       const panel = document.querySelector('.dsh-pet-mp__panel').getBoundingClientRect();
-      return Math.abs(panel.left - trigger.left) < 2 && panel.top >= 0 && panel.bottom <= innerHeight;
-    });
+      const verticalGap = Math.min(Math.abs(panel.top - anchor.bottom - 4), Math.abs(anchor.top - panel.bottom - 4));
+      return (
+        Math.abs(window.scrollY - y) < 2 &&
+        Math.abs(panel.left - anchor.left) < 2 &&
+        verticalGap < 2 &&
+        panel.top >= 0 &&
+        panel.bottom <= innerHeight
+      );
+    }, scrollY);
   }
-  await page.getByRole('menuitemradio', { name: 'Follow current conversation' }).click();
+  await panel.getByRole('menuitemradio', { name: 'Follow current conversation' }).click();
   await save(page);
   assert.deepEqual(writes[0].whisperModel, { provider: '', model: '' });
 });

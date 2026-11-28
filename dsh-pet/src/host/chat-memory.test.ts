@@ -219,8 +219,8 @@ describe('createChatMemory —— 指定配图的碎碎念', () => {
     }
   });
 
-  test('voiceTo：传了就用传的，没传按 display 推导（默认宠物 display=both → desktop）', async () => {
-    const ws = poolWorkspace({ voiceEnabled: true });
+  test('voiceTo：传了就用传的，没传按 display 推导（both → desktop）', async () => {
+    const ws = poolWorkspace({ voiceEnabled: true, pets: [{ id: 'main', display: 'both' }] });
     const records: Array<{ petId: string; leaf: string; data: Record<string, unknown> }> = [];
     try {
       await createMemory('随便一句', ws, ws.memeDir, { records }).publishWhisper('main', undefined, 'web');
@@ -250,7 +250,11 @@ describe('createChatMemory —— 指定配图的碎碎念', () => {
       rmSync(off.dir, { recursive: true, force: true });
     }
 
-    const on = tempWorkspace({ voiceWhisperEnabled: true, voiceEnabled: true });
+    const on = tempWorkspace({
+      voiceWhisperEnabled: true,
+      voiceEnabled: true,
+      pets: [{ id: 'main', display: 'both' }],
+    });
     const onRecords: Array<{ petId: string; leaf: string; data: Record<string, unknown> }> = [];
     try {
       await createMemory('一句', on, undefined, { records: onRecords }).publishWhisper(
@@ -271,12 +275,12 @@ describe('createChatMemory —— 指定配图的碎碎念', () => {
 
 describe('createChatMemory —— 对话回复的 voiceTo', () => {
   test('回复写叶子时带上该由哪一端念（对话请求没有具体端，按 display 推导）', async () => {
-    const ws = tempWorkspace({ voiceEnabled: true });
+    const ws = tempWorkspace({ voiceEnabled: true, pets: [{ id: 'main', display: 'both' }] });
     const records: Array<{ petId: string; leaf: string; data: Record<string, unknown> }> = [];
     try {
       const r = await createMemory('在的', ws, undefined, { records }).chatWithPet('main', '在吗');
       assert.equal(r.ok, true);
-      assert.equal(records[0]?.data.voiceTo, 'desktop', '默认宠物 display=both，桌面优先');
+      assert.equal(records[0]?.data.voiceTo, 'desktop', 'display=both 时桌面优先');
     } finally {
       rmSync(ws.dir, { recursive: true, force: true });
     }
@@ -413,6 +417,38 @@ describe('createChatMemory —— 提示词注入（配图 / 动作各自独立�
 });
 
 describe('createChatMemory —— 删除对话记忆', () => {
+  test('记忆文件损坏时保留原始内容，修复后同一实例可以继续对话', async () => {
+    const ws = tempWorkspace();
+    const file = join(ws.userRoot, 'memory.json');
+    const damaged = '{"main":';
+    try {
+      mkdirSync(ws.userRoot, { recursive: true });
+      writeFileSync(file, damaged);
+      const memory = createMemory('回复', ws);
+      await assert.rejects(memory.chatWithPet('main', '在吗'));
+      assert.equal(readFileSync(file, 'utf8'), damaged);
+      writeFileSync(file, '{}');
+      await memory.chatWithPet('main', '在吗');
+      assert.equal(readMessages(ws.userRoot).length, 2);
+    } finally {
+      rmSync(ws.dir, { recursive: true, force: true });
+    }
+  });
+
+  test('当前宠物的消息结构损坏时保留原始内容', async () => {
+    const ws = tempWorkspace();
+    const file = join(ws.userRoot, 'memory.json');
+    const damaged = '{"main":{"main":{"messages":{"text":"旧消息"}}}}';
+    try {
+      mkdirSync(ws.userRoot, { recursive: true });
+      writeFileSync(file, damaged);
+      await assert.rejects(createMemory('回复', ws).chatWithPet('main', '在吗'));
+      assert.equal(readFileSync(file, 'utf8'), damaged);
+    } finally {
+      rmSync(ws.dir, { recursive: true, force: true });
+    }
+  });
+
   /** 预置一份带两轮记忆的文件（时间戳固定，避免依赖真实时钟）。 */
   function seed(userRoot: string): void {
     mkdirSync(userRoot, { recursive: true });

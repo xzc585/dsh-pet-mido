@@ -2573,6 +2573,120 @@ paths:
         "405":
           description: 方法不是 GET。
 
+  /dsh-pet-7340/memory-cleanup:
+    get:
+      tags: [Config]
+      operationId: getCacheCleanupStatus
+      summary: 读取插件缓存清理状态
+      responses:
+        "200":
+          description: 当前设置及宿主占用，字节数以 B 为单位。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [config, lastRunAt, generation, processBytes, cacheBytes]
+                properties:
+                  config:
+                    $ref: "#/components/schemas/CacheCleanupConfig"
+                  lastRunAt:
+                    type: [integer, "null"]
+                    description: 上次清理的 Unix 毫秒时间戳。
+                  generation:
+                    type: integer
+                  processBytes:
+                    type: integer
+                  cacheBytes:
+                    type: integer
+    post:
+      tags: [Action]
+      operationId: cleanPluginCache
+      summary: 立即清理插件缓存
+      description: 清理语音缓存及环境缓存，并通知桌宠释放闲置动画。手动调用不受自动清理开关和防抖间隔限制。
+      responses:
+        "200":
+          description: 本次插件缓存清理结果。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, reason, generation, at, freedBytes, processBytes, cacheBytes]
+                properties:
+                  ok:
+                    const: true
+                  reason:
+                    const: manual
+                  generation:
+                    type: integer
+                  at:
+                    type: integer
+                    description: Unix 毫秒时间戳。
+                  freedBytes:
+                    type: integer
+                    description: 本次成功删除的语音缓存字节数。
+                  processBytes:
+                    type: integer
+                  cacheBytes:
+                    type: integer
+
+  /dsh-pet-7340/system-memory:
+    get:
+      tags: [Config]
+      operationId: getSystemMemoryStatus
+      summary: 读取 Windows 系统内存清理状态
+      responses:
+        "200":
+          description: 内存占用、清理设置和上次清理结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemMemoryStatus"
+    post:
+      tags: [Action]
+      operationId: cleanSystemMemory
+      summary: 立即回收可释放的工作集内存
+      responses:
+        "200":
+          description: 清理请求结果及助手状态。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemMemoryStatus"
+
+  /dsh-pet-7340/system-memory/config:
+    post:
+      tags: [Config]
+      operationId: saveSystemMemoryConfig
+      summary: 更新 Windows 自动清理设置
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemMemoryConfig"
+      responses:
+        "200":
+          description: 助手状态及更新后的设置。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemMemoryStatus"
+        "400":
+          description: 请求体 JSON 或配置格式无效。
+
+  /dsh-pet-7340/system-memory/clean-elevated:
+    post:
+      tags: [Action]
+      operationId: cleanSystemMemoryElevated
+      summary: 请求管理员权限后进行完整清理
+      responses:
+        "200":
+          description: 提权清理请求结果及助手状态。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemMemoryStatus"
+
   /dsh-pet-7340/voice/speak:
     post:
       tags: [Voice]
@@ -3438,6 +3552,60 @@ components:
             $ref: "#/components/schemas/FailureResponse"
 
   schemas:
+    CacheCleanupConfig:
+      type: object
+      required: [enabled, intervalSec, thresholdMb, debounceSec]
+      properties:
+        enabled:
+          type: boolean
+        intervalSec:
+          type: number
+        thresholdMb:
+          type: number
+        debounceSec:
+          type: number
+
+    SystemMemoryConfig:
+      type: object
+      required: [autoClean, intervalSec, thresholdPercent, debounceSec]
+      properties:
+        autoClean:
+          type: boolean
+        intervalSec:
+          type: number
+        thresholdPercent:
+          type: number
+        debounceSec:
+          type: number
+
+    SystemMemoryStatus:
+      type: object
+      required: [ok, available]
+      properties:
+        ok:
+          type: boolean
+        available:
+          type: boolean
+        reason:
+          enum: [not-windows, helper-missing, helper-failed]
+        message:
+          type: string
+        totalBytes:
+          type: number
+        availableBytes:
+          type: number
+        usedBytes:
+          type: number
+        usedPercent:
+          type: number
+        isAdmin:
+          type: boolean
+        config:
+          $ref: "#/components/schemas/SystemMemoryConfig"
+        lastClean:
+          type: object
+          description: 最近一次成功取得的清理记录，可包含时间、前后占用和回收进程数。
+
     OkResponse:
       type: object
       required: [ok]

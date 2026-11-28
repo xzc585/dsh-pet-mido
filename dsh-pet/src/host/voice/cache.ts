@@ -7,8 +7,8 @@
  * @module dsh-pet/src/host/voice/cache
  */
 import { createHash } from 'node:crypto';
-import { mkdir, readdir, rm, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { lstat, mkdir, readdir, unlink } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import type { VoiceFormat } from './types.ts';
 
 /** 缓存总量上限（字节）：超过后从最旧的开始删。 */
@@ -62,46 +62,89 @@ export async function ensureCacheDir(userRoot: string): Promise<string> {
   return dir;
 }
 
-/**
- * 按「总量 + 条数」淘汰最旧的文件；两个上限都满足时立刻停手。
- * @param dir - 缓存目录。
- * @param limits - 上限，缺省用模块常量。
- * @returns 实际删除的文件数。
- */
-export async function pruneCache(dir: string, limits: { maxBytes?: number; maxFiles?: number } = {}): Promise<number> {
-  const maxBytes = limits.maxBytes ?? CACHE_MAX_BYTES;
-  const maxFiles = limits.maxFiles ?? CACHE_MAX_FILES;
-  let names: string[];
+interface CacheEntry {
+  file: string;
+  size: number;
+  mtimeMs: number;
+}
+
+interface CacheSnapshot {
+  dir: string;
+  entries: CacheEntry[];
+  bytes: number;
+}
+
+type CacheLimits = { maxBytes?: number; maxFiles?: number };
+type RemovedCache = { files: number; bytes: number };
+const pendingPrunes = new Map<string, Promise<RemovedCache>>();
+
+/** 扫描一次普通音频文件，供统计和淘汰共用。 */
+export async function scanVoiceCache(dir: string): Promise<CacheSnapshot> {
+  const snapshot: CacheSnapshot = { dir: resolve(dir), entries: [], bytes: 0 };
+  let names;
   try {
-    names = await readdir(dir);
+    names = await readdir(dir, { withFileTypes: true });
   } catch {
-    return 0; // 目录还不存在：没有可淘汰的
+    return snapshot;
   }
-  const entries: { file: string; size: number; mtimeMs: number }[] = [];
-  for (const name of names) {
-    if (!CACHED_EXTENSIONS.some((ext) => name.endsWith(ext))) continue;
-    const file = join(dir, name);
+  for (const entry of names) {
+    if (!entry.isFile() || !CACHED_EXTENSIONS.some((ext) => entry.name.endsWith(ext))) continue;
+    const file = join(dir, entry.name);
     try {
-      const info = await stat(file);
-      entries.push({ file, size: info.size, mtimeMs: info.mtimeMs });
+      const info = await lstat(file);
+      if (!info.isFile()) continue;
+      snapshot.entries.push({ file, size: info.size, mtimeMs: info.mtimeMs });
+      snapshot.bytes += info.size;
     } catch {
       /* 这条正被别的请求删掉，跳过 */
     }
   }
-  entries.sort((a, b) => a.mtimeMs - b.mtimeMs);
-  let totalBytes = entries.reduce((sum, entry) => sum + entry.size, 0);
+  return snapshot;
+}
+
+/** 淘汰快照中的文件，并统计实际删除的数量和字节。 */
+export async function pruneScannedCache(snapshot: CacheSnapshot, limits: CacheLimits = {}): Promise<RemovedCache> {
+  const { dir } = snapshot;
+  const previous = pendingPrunes.get(dir);
+  // Windows 同时删除同一个文件时，两次调用有可能都报告成功，按目录串行删除。
+  const prune = (async () => {
+    await previous;
+    return pruneCacheEntries(snapshot, limits);
+  })();
+  pendingPrunes.set(dir, prune);
+  try {
+    return await prune;
+  } finally {
+    if (pendingPrunes.get(dir) === prune) pendingPrunes.delete(dir);
+  }
+}
+
+async function pruneCacheEntries(snapshot: CacheSnapshot, limits: CacheLimits): Promise<RemovedCache> {
+  const maxBytes = limits.maxBytes ?? CACHE_MAX_BYTES;
+  const maxFiles = limits.maxFiles ?? CACHE_MAX_FILES;
+  const { entries, bytes } = snapshot;
+  const removed = { files: 0, bytes: 0 };
+  if (bytes <= maxBytes && entries.length <= maxFiles) return removed;
+  if (maxFiles !== 0) entries.sort((a, b) => a.mtimeMs - b.mtimeMs);
+  let totalBytes = bytes;
   let totalFiles = entries.length;
-  let removed = 0;
   for (const entry of entries) {
     if (totalBytes <= maxBytes && totalFiles <= maxFiles) break;
     try {
-      await rm(entry.file, { force: true });
-      removed += 1;
-      totalBytes -= entry.size;
-      totalFiles -= 1;
-    } catch {
-      /* 删不掉就留着，不影响本次请求 */
+      await unlink(entry.file);
+      removed.files += 1;
+      removed.bytes += entry.size;
+    } catch (error) {
+      // 文件已被其它进程删除也不再占用本次限额，但不能算到本次释放量里。
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') continue;
     }
+    totalBytes -= entry.size;
+    totalFiles -= 1;
   }
   return removed;
+}
+
+/** 按「总量 + 条数」淘汰最旧的文件，返回实际删除的文件数。 */
+export async function pruneCache(dir: string, limits: CacheLimits = {}): Promise<number> {
+  return (await pruneScannedCache(await scanVoiceCache(dir), limits)).files;
 }

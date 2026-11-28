@@ -39,7 +39,7 @@ export function createMemoryOrphans(deps: OrphanDeps) {
   const { configPaths, readMemory, writeMemory, withLock } = deps;
   /** 读出配置里已不存在的宠物分桶；只看条数与最后时间，不带正文。 */
   const orphanHistory = async (): Promise<OrphanBucket[]> => {
-    const cfg = readAllConfig(configPaths);
+    const cfg = readAllConfig(configPaths, { requireComplete: true });
     const mem = await readMemory();
     const out: OrphanBucket[] = [];
     for (const [entry, byPet] of Object.entries(mem)) {
@@ -56,7 +56,7 @@ export function createMemoryOrphans(deps: OrphanDeps) {
   /** 清掉所有残留分桶；空条目一并摘除。 */
   const deleteOrphans = async (): Promise<{ ok: true; pets: number; messages: number }> =>
     withLock(async () => {
-      const cfg = readAllConfig(configPaths);
+      const cfg = readAllConfig(configPaths, { requireComplete: true });
       const mem = await readMemory();
       let pets = 0;
       let messages = 0;

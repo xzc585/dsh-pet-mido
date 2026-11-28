@@ -6,13 +6,15 @@
  * 不读合并成品、不校验宠物字段：entry 是否合法、找不到文件该报什么 reason，都由调用方决定。
  * @module dsh-pet/src/host/routes/config/layer
  */
-import { readPetConfigEntry, readUserConfig } from '../../config.ts';
+import { mkdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { writeTextAtomically } from '../../atomic-file.ts';
+import { readAllConfig, readPetConfigEntry, readUserConfig } from '../../config.ts';
 import type { PetRouteDeps } from '../types.ts';
 
-/** 要写的那一层：文件路径、所在目录，以及该文件在磁盘上的原对象（透传递归用）。 */
+/** 要写的那一层：文件路径与磁盘原对象（透传用）。 */
 export interface ConfigLayer {
   readonly path: string;
-  readonly dir: string;
   readonly existing: Record<string, unknown> | undefined;
 }
 
@@ -30,10 +32,45 @@ export function resolveConfigLayer(deps: PetRouteDeps, entry: string): ConfigLay
   if (entry === 'main') {
     return {
       ok: true,
-      layer: { path: deps.userConfigPath, dir: deps.userRoot, existing: readUserConfig(deps.configPaths) },
+      layer: { path: deps.userConfigPath, existing: readUserConfig(deps.configPaths) },
     };
   }
   const file = readPetConfigEntry(deps.configPaths, entry);
   if (!file) return { ok: false };
-  return { ok: true, layer: { path: file.path, dir: deps.petConfigDir, existing: file.raw } };
+  return { ok: true, layer: { path: file.path, existing: file.raw } };
+}
+
+const configWrites = new Map<string, Promise<unknown>>();
+
+/** 所有配置层共享写入队列，在同一事务内读取、检查全局约束和落盘。 */
+export async function withConfigWrite<T>(path: string, write: () => Promise<T> | T): Promise<T> {
+  const previous = configWrites.get(path);
+  const next = previous ? previous.then(write, write) : Promise.resolve().then(write);
+  configWrites.set(path, next);
+  try {
+    return await next;
+  } finally {
+    if (configWrites.get(path) === next) configWrites.delete(path);
+  }
+}
+
+export async function writeConfigLayer(path: string, config: Record<string, unknown>): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeTextAtomically(path, JSON.stringify(config, null, 2));
+}
+
+/** 排除本次要替换的层，避免该层现有的重复项遮住其他层的 id。 */
+export function conflictingIds(deps: PetRouteDeps, entry: string, pets: readonly { id: string }[]): string[] {
+  const merged = readAllConfig(deps.configPaths, { requireComplete: true, excludeEntry: entry });
+  const taken = new Map<string, string>();
+  for (const [key, conf] of Object.entries(merged)) {
+    const list = Array.isArray(conf.pets) ? (conf.pets as Record<string, unknown>[]) : [];
+    for (const pet of list) taken.set(String(pet.id), key);
+  }
+  const conflicts: string[] = [];
+  for (const pet of pets) {
+    const owner = taken.get(pet.id);
+    if (owner !== undefined) conflicts.push(`${pet.id}（已被「${owner}」占用）`);
+  }
+  return conflicts;
 }

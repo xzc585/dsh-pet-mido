@@ -47,7 +47,7 @@ function makeOrphans(initial: MemoryFile) {
     withLock: async (fn) => fn(),
     log: { info: () => {} },
   });
-  return { orphans, mem, clean: config.clean };
+  return { orphans, mem, ...config };
 }
 
 describe('createMemoryOrphans —— 已删宠物的残留历史', () => {
@@ -115,6 +115,18 @@ describe('createMemoryOrphans —— 已删宠物的残留历史', () => {
       assert.equal(writes, 0, '没有可删的东西时不该重写记忆文件');
     } finally {
       config.clean();
+    }
+  });
+
+  test('宠物配置损坏时拒绝判定和清理残留历史', async () => {
+    const suite = makeOrphans({ main: { existing: { messages: [{ role: 'user', content: '保留', ts: 1 }] } } });
+    try {
+      writeFileSync(suite.configPaths.userFile, '{"pets":');
+      await assert.rejects(suite.orphans.orphanHistory());
+      await assert.rejects(suite.orphans.deleteOrphans());
+      assert.equal(suite.mem.main?.existing?.messages[0]?.content, '保留');
+    } finally {
+      suite.clean();
     }
   });
 });

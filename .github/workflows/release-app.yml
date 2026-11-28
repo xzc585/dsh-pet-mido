@@ -61,14 +61,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "24"
-
-      - name: 安装 pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 12
+          cache: npm
+          cache-dependency-path: dsh-pet/package-lock.json
 
       - name: 安装依赖
-        run: pnpm install --frozen-lockfile
+        run: npm ci --ignore-scripts
 
       - name: 校验版本一致性
         run: |
@@ -86,22 +83,22 @@ jobs:
           }
           if ($base -ne $env:TAG) { "测试标签：$env:TAG（基础版本 $base 一致）" } else { "版本一致：$env:TAG" }
 
-      - name: 构建 lib（四个入口）
-        run: pnpm run bundle
+      - name: 完整构建
+        run: npm run build
 
-      # shared-core.js（window.PetShared）是 src/shared 的 iife 产物，被 .gitignore 排除、不入库。
-      # 少了它，桌面 helper 的 constants.js 顶层拿不到 window.PetShared，渲染端直接崩、桌宠不显示。
-      # 发布链的 prepare.js 会构建它，但本流水线只跑 bundle，所以必须显式补这一步。
-      - name: 构建桌面共享核心（shared-core）
-        run: pnpm run build:desktop-core
+      - name: 检查插件发布内容
+        run: npm run verify:package
 
-      - name: 类型检查
-        run: pnpm run typecheck
+      - name: 运行单元测试
+        run: npm test
 
       - name: 打包解包目录（CI 无本机 Electron，允许下载）
         env:
           DSH_PET_ALLOW_ELECTRON_DOWNLOAD: "1"
         run: npm run dist
+
+      - name: 检查解包版米豆素材和助手
+        run: npm run check:release-assets -- --windows
 
       - name: 压缩为固定名 zip
         run: |
@@ -123,7 +120,7 @@ jobs:
 
           $size = (Get-Item $zip).Length / 1MB
           "zip: $zip（{0:N1} MB）" -f $size
-          if ($size -lt 50) { Write-Error "zip 体积异常（{0:N1} MB），疑似打包缺失" -f $size; exit 1 }
+          if ($size -lt 50) { throw ("zip 体积异常（{0:N1} MB），疑似打包缺失" -f $size) }
 
       - name: 上传构建产物（发布失败也能下载排查）
         uses: actions/upload-artifact@v4

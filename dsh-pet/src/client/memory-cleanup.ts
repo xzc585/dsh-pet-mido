@@ -9,6 +9,7 @@
  */
 import { animationCacheBytes, releaseDetachedAnimationMedia } from './pet/animation/media-cache.ts';
 import {
+  canCheckMemoryCleanup,
   decideMemoryCleanup,
   readMemoryCleanup,
   type CleanupReason,
@@ -62,7 +63,10 @@ export function clientProcessBytes(): number {
  * @param reason - 定时、阈值或宿主信号。
  * @param now - 记进防抖的时刻。
  */
-export function runClientMemoryCleanup(reason: CleanupReason, now = Date.now()): { videos: number; bytes: number; reason: CleanupReason } {
+export function runClientMemoryCleanup(
+  reason: CleanupReason,
+  now = Date.now(),
+): { videos: number; bytes: number; reason: CleanupReason } {
   const released = releaseDetachedAnimationMedia();
   lastRunAt = now;
   return { ...released, reason };
@@ -73,11 +77,14 @@ export function runClientMemoryCleanup(reason: CleanupReason, now = Date.now()):
  *
  * @param now - 当前时刻。
  */
-export function tickClientMemoryCleanup(now = Date.now()): { videos: number; bytes: number; reason: CleanupReason } | null {
+export function tickClientMemoryCleanup(
+  now = Date.now(),
+): { videos: number; bytes: number; reason: CleanupReason } | null {
   if (!clockReady) {
     startedAt = now;
     clockReady = true;
   }
+  if (!canCheckMemoryCleanup({ ...config, now, lastRunAt })) return null;
   const decision = decideMemoryCleanup({
     ...config,
     now,

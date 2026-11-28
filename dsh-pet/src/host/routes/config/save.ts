@@ -12,11 +12,11 @@ import {
   syncUserConfigFromDefault,
   userConfigUnparsable,
 } from '../../config.ts';
-import { mkdir, writeFile } from 'node:fs/promises';
 import { resetUapiCache } from '../../uapi.ts';
 import { type RouteResult } from '../../http.ts';
 import type { PetRouteDeps, RouteInput } from '../types.ts';
 import { failResult, invalidJson, methodNotAllowed, okResult } from '../result.ts';
+import { conflictingIds, withConfigWrite, writeConfigLayer } from './layer.ts';
 
 /**
  * 写端点分发：PUT 保存用户层，POST 同步内置默认，其余方法 405。
@@ -24,14 +24,14 @@ import { failResult, invalidJson, methodNotAllowed, okResult } from '../result.t
  * @param input - 已解析的请求（方法、请求体、查询串）。
  */
 export async function saveConfigRoute(deps: PetRouteDeps, input: RouteInput): Promise<RouteResult> {
-  if (input.method === 'PUT') return saveUserLayer(deps, input);
-  if (input.method === 'POST') return syncFromDefault(deps);
+  if (input.method === 'PUT') return withConfigWrite(deps.userConfigPath, () => saveUserLayer(deps, input));
+  if (input.method === 'POST') return withConfigWrite(deps.userConfigPath, () => syncFromDefault(deps));
   return methodNotAllowed();
 }
 
 /** 白名单重建用户层后写盘，响应体是保存后的成品聚合。 */
 async function saveUserLayer(deps: PetRouteDeps, input: RouteInput): Promise<RouteResult> {
-  const { configPaths, ctx, requestRestart, userConfigPath, userRoot } = deps;
+  const { configPaths, ctx, requestRestart, userConfigPath } = deps;
   let parsed: unknown;
   try {
     parsed = JSON.parse(input.body ?? '');
@@ -60,8 +60,9 @@ async function saveUserLayer(deps: PetRouteDeps, input: RouteInput): Promise<Rou
         userFile: userConfigPath,
       });
     }
-    await mkdir(userRoot, { recursive: true });
-    await writeFile(userConfigPath, JSON.stringify(clean, null, 2), 'utf8');
+    const conflicts = conflictingIds(deps, 'main', clean.pets);
+    if (conflicts.length > 0) return failResult('bad-request', '宠物 id 与其它种类冲突：' + conflicts.join('、'));
+    await writeConfigLayer(userConfigPath, clean);
     // 配置变了，UAPI 那条缓存必须作废：否则改完城市得等 TTL（10 分钟）过期才生效，
     // 而碎碎念与外部脚本不带 fresh，会一直读到旧城市
     resetUapiCache();
@@ -70,7 +71,9 @@ async function saveUserLayer(deps: PetRouteDeps, input: RouteInput): Promise<Rou
     // flattenConfigPets 拍平渲染，客户端的条目级字段只有这一处填充。
     return okResult(readAllConfig(configPaths));
   } catch (e) {
-    ctx.logger?.warn?.(`[dsh-pet] config save failed: ${e instanceof Error ? e.message : String(e)}`);
+    ctx.logger?.warn?.(
+      `[dsh-pet] config save failed: ${userConfigPath} (${e instanceof Error ? e.message : String(e)})`,
+    );
     return failResult('generate-error', 'failed to save config');
   }
 }

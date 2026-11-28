@@ -1,11 +1,11 @@
 /**
  * JSONC 容忍读取：把用户手写、带 // 注释的配置解析成对象。
  *
- * 不校验字段，不做合并；解析失败一律抛出，由调用方决定回退还是报错。
+ * 不校验字段或合并配置；需要完整快照的调用方可要求保留读取错误。
  * 必须始终成立：只做去注释与解析，绝不改写用户文件内容。
  * @module dsh-pet/src/host/config/jsonc
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import type { ConfigPaths } from './constants.ts';
 
 /** 仅删除字符串之外的 JSONC 注释，保留字符串转义、换行与相邻 JSON token 的分隔。 */
@@ -40,11 +40,13 @@ function stripJsonc(src: string): string {
 }
 
 /** 读取并解析 JSONC 文件；不存在/解析失败 → undefined（调用方决定处理） */
-export function readJsonc(path: string): Record<string, unknown> | undefined {
+export function readJsonc(path: string, requireComplete = false): Record<string, unknown> | undefined {
   try {
     const raw = JSON.parse(stripJsonc(readFileSync(path, 'utf8'))) as unknown;
-    return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : undefined;
-  } catch {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('配置根必须为对象');
+    return raw as Record<string, unknown>;
+  } catch (error) {
+    if (requireComplete) throw new Error('无法读取或解析宠物配置，请修复后重试：' + path, { cause: error });
     return undefined;
   }
 }
@@ -66,12 +68,15 @@ export function readUserConfig(paths: ConfigPaths): Record<string, unknown> | un
  * 所以先不写盘、回 200 + `reason=user-config-unparsable` 让设置页弹窗确认。文件不存在 → false。
  */
 export function userConfigUnparsable(paths: ConfigPaths): boolean {
-  const file = effectiveUserFile(paths);
+  const file = effectiveUserFile(paths, true);
   return file !== undefined && readJsonc(file) === undefined;
 }
 
-export function effectiveUserFile(paths: ConfigPaths): string | undefined {
-  if (existsSync(paths.userFile)) return paths.userFile;
-  if (paths.legacyUserFile && existsSync(paths.legacyUserFile)) return paths.legacyUserFile;
+export function effectiveUserFile(paths: ConfigPaths, requireComplete = false): string | undefined {
+  const exists = requireComplete
+    ? (path: string) => lstatSync(path, { throwIfNoEntry: false }) !== undefined
+    : existsSync;
+  if (exists(paths.userFile)) return paths.userFile;
+  if (paths.legacyUserFile && exists(paths.legacyUserFile)) return paths.legacyUserFile;
   return undefined;
 }

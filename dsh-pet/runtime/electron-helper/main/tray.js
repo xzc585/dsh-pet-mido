@@ -44,6 +44,7 @@ function createTray({
     display === 'both' ? 'web' : display === 'web' ? 'both' : display === 'desktop' ? 'none' : 'desktop';
 
   let tray = null;
+  let menuGeneration = 0;
 
   /** 写回某只宠物的 display：宿主写完配置会重启本进程，响应可能永远不回（同 sprite.js 的 setPetDisplay） */
   function traySetPetDisplay(id, display) {
@@ -89,8 +90,9 @@ function createTray({
    * 独立成函数是为了应用模式的重建：那边改 display 只重建窗口、不重启进程，
    * 勾选状态得靠这里重读一次刷新，否则菜单和配置对不上。
    */
-  async function buildMenu() {
+  async function buildMenu(generation) {
     const resp = await hostRequest('GET', petRoute + '/config');
+    if (resp.status !== 200) throw new Error('config HTTP ' + resp.status);
     const merged = JSON.parse(resp.body || '{}');
     // 托盘开关（main 条目的 trayEnabled）：只有显式 false 才不建，缺失或写坏时保持建，
     // 免得一份老配置或一个错值让托盘无声消失。与下面的 pets 取自同一份成品配置。
@@ -117,33 +119,34 @@ function createTray({
         console.error('[dsh-pet-desktop-helper] tray quit failed:', String(e && e.message ? e.message : e));
       });
     };
-    const connectItems =
-      appMode
-        ? [
-            { type: 'separator' },
-            process.env.DSH_PET_DSH_CONNECTED === '1'
-              ? {
-                  label: '断开 DeepSeek Harness',
-                  click: () => {
-                    const hook = globalThis.__dshPetDisconnectDsh;
-                    if (typeof hook === 'function') void hook();
-                  },
-                }
-              : {
-                  label: '连接 DeepSeek Harness',
-                  click: () => {
-                    const hook = globalThis.__dshPetConnectDsh;
-                    if (typeof hook === 'function') void hook();
-                  },
+    const connectItems = appMode
+      ? [
+          { type: 'separator' },
+          process.env.DSH_PET_DSH_CONNECTED === '1'
+            ? {
+                label: '断开 DeepSeek Harness',
+                click: () => {
+                  const hook = globalThis.__dshPetDisconnectDsh;
+                  if (typeof hook === 'function') void hook();
                 },
-          ]
-        : [];
+              }
+            : {
+                label: '连接 DeepSeek Harness',
+                click: () => {
+                  const hook = globalThis.__dshPetConnectDsh;
+                  if (typeof hook === 'function') void hook();
+                },
+              },
+        ]
+      : [];
     return Menu.buildFromTemplate([
       ...pets.map((pet) => ({
         label: pet.name || pet.id,
         type: 'checkbox',
         checked: isDesktopDisplay(pet.display),
-        click: () => traySetPetDisplay(pet.id, toggleDisplay(pet.display)),
+        click: () => {
+          if (generation === menuGeneration) traySetPetDisplay(pet.id, toggleDisplay(pet.display));
+        },
       })),
       ...connectItems,
       ...(canQuit ? [{ type: 'separator' }, { label: '退出', click: quitApp }] : []),
@@ -155,16 +158,40 @@ function createTray({
    * 这是托盘相对宠物右键菜单的增量）。勾 = 当前 display 含 desktop/both。
    */
   async function startTray() {
+    // 请求行要携带回调 URL，而端口在 startBridgeCallback 的 listen 回调里才有值（最多等 2s）
+    for (let i = 0; isBridge && !callbackUrl() && i < 100; i += 1) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    await refreshTray();
+  }
+
+  function removeTray() {
+    if (!tray) return;
     try {
-      // 请求行要携带回调 URL，而端口在 startBridgeCallback 的 listen 回调里才有值（最多等 2s）
-      for (let i = 0; isBridge && !callbackUrl() && i < 100; i += 1) {
-        await new Promise((r) => setTimeout(r, 20));
+      tray.destroy();
+    } catch (e) {
+      console.error('[dsh-pet-desktop-helper] tray destroy failed:', String(e && e.message ? e.message : e));
+    }
+    tray = null;
+  }
+
+  /** 切换宿主后采用最新的配置与连接状态，慢接口不能用旧菜单覆盖新菜单。 */
+  async function refreshTray() {
+    const generation = ++menuGeneration;
+    try {
+      const menu = await buildMenu(generation);
+      if (generation !== menuGeneration) return;
+      if (menu === null) {
+        removeTray();
+        return;
       }
-      const menu = await buildMenu();
-      if (menu === null) return;
-      tray = new Tray(trayIcon());
+      if (!tray) {
+        tray = new Tray(trayIcon());
+        // Windows 上 setContextMenu 只接管右键；macOS 左键也弹出菜单。
+        if (platform.leftClickPopsMenu) tray.on('click', () => tray.popUpContextMenu());
+      }
       tray.setToolTip(
-        process.env.DSH_PET_APP_MODE === '1'
+        appMode
           ? process.env.DSH_PET_DSH_CONNECTED === '1'
             ? '米豆 · 已连接 DeepSeek Harness'
             : '米豆 · 独立运行'
@@ -172,19 +199,6 @@ function createTray({
       );
 
       tray.setContextMenu(menu);
-      // Windows 上 setContextMenu 只接管右键，左键默认什么都不做（macOS 相反：左键即弹菜单）
-      if (platform.leftClickPopsMenu) tray.on('click', () => tray.popUpContextMenu());
-    } catch (e) {
-      console.error('[dsh-pet-desktop-helper] tray init failed:', String(e && e.message ? e.message : e));
-    }
-  }
-
-  /** 重读配置并刷新菜单勾选；没建托盘时什么都不做（应用模式重建窗口后调用）。 */
-  async function refreshTray() {
-    if (!tray) return;
-    try {
-      const menu = await buildMenu();
-      if (menu !== null) tray.setContextMenu(menu);
     } catch (e) {
       console.error('[dsh-pet-desktop-helper] tray refresh failed:', String(e && e.message ? e.message : e));
     }
@@ -195,13 +209,8 @@ function createTray({
     refresh: refreshTray,
     exists: () => tray !== null,
     destroy() {
-      if (!tray) return;
-      try {
-        tray.destroy();
-      } catch (e) {
-        console.error('[dsh-pet-desktop-helper] tray destroy failed:', String(e && e.message ? e.message : e));
-      }
-      tray = null;
+      menuGeneration += 1;
+      removeTray();
     },
   };
 }

@@ -126,7 +126,13 @@ Object.assign(PetSprite.prototype, {
     if (leaf.action === 'dsh-connect' || leaf.action === 'dsh-disconnect') {
       const method = leaf.action === 'dsh-connect' ? 'connectDsh' : 'disconnectDsh';
       if (!window.petBridge || typeof window.petBridge[method] !== 'function') {
-        this.showWhisper('当前无法连接 DeepSeek Harness。请使用米豆入口程序（mido.exe）。', undefined, undefined, 8000, false);
+        this.showWhisper(
+          '当前无法连接 DeepSeek Harness。请使用米豆入口程序（mido.exe）。',
+          undefined,
+          undefined,
+          8000,
+          false,
+        );
         return;
       }
       window.petBridge[method]()

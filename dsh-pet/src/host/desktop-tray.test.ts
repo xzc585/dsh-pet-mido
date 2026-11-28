@@ -28,6 +28,28 @@ interface MenuItem {
 
 const { createTray } = createRequire(import.meta.url)('../../runtime/electron-helper/main/tray.js') as TrayModule;
 
+test('托盘的 HTTP 请求会使用切换后的宿主地址和令牌', async (t) => {
+  const { createBridge } = createRequire(import.meta.url)('../../runtime/electron-helper/main/bridge.js') as {
+    createBridge(options: Record<string, unknown>): {
+      hostRequest(method: string, path: string): Promise<unknown>;
+      setHost(target: { origin: string; token: string }): void;
+    };
+  };
+  const calls: Array<[string, string | null]> = [];
+  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+    calls.push([url, new Headers(init.headers).get('X-DSH-Pet-Token')]);
+    return new Response('{}');
+  });
+  const bridge = createBridge({ isBridge: false, origin: 'http://127.0.0.1:11001', token: 'standalone' });
+  await bridge.hostRequest('GET', '/config');
+  bridge.setHost({ origin: 'http://127.0.0.1:11002', token: 'dsh' });
+  await bridge.hostRequest('GET', '/config');
+  assert.deepEqual(calls, [
+    ['http://127.0.0.1:11001/config', 'standalone'],
+    ['http://127.0.0.1:11002/config', 'dsh'],
+  ]);
+});
+
 /** 造一套假依赖：记录宿主请求、菜单模板与退出调用。 */
 function harness(options: {
   appMode?: boolean;
@@ -188,5 +210,17 @@ describe('createTray —— 重建后刷新', () => {
     const { tray, menus } = harness({ pets: [] });
     await tray.refresh();
     assert.equal(menus.length, 0);
+  });
+
+  test('旧托盘菜单不能向切换后的宿主提交宠物显示设置', async () => {
+    const { tray, menus, requests } = harness({ pets: [{ id: 'mido', display: 'both' }] });
+    await tray.start();
+    const oldItem = lastMenu(menus)[0];
+    const refresh = tray.refresh();
+    oldItem.click?.();
+    await refresh;
+    assert.equal(requests.filter((request) => request.startsWith('POST')).length, 0);
+    lastMenu(menus)[0].click?.();
+    assert.equal(requests.filter((request) => request.startsWith('POST')).length, 1);
   });
 });

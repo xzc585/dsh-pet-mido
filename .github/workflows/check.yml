@@ -1,0 +1,30 @@
+name: Project checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: dsh-pet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: dsh-pet/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm run verify:package
+      - run: npm test
+      - run: npx playwright install chromium
+      - run: npm run test:ui

@@ -152,6 +152,7 @@ async function setupPage(): Promise<Page> {
     URLSearchParams,
     setTimeout,
     clearTimeout,
+    setInterval: () => 0,
     console,
     window: { addEventListener() {}, removeEventListener() {}, innerHeight: 800, confirm: () => false },
     document: {

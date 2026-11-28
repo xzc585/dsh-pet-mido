@@ -40,6 +40,8 @@ export interface DiscoveryRecord {
   readonly token: string;
   /** 可选版本号，仅供排查。 */
   readonly version?: string;
+  /** 宿主桌面配置变更后递增，心跳不修改。 */
+  readonly configRevision?: number;
   /** 最近一次心跳时间（ISO 8601）。 */
   readonly updatedAt: string;
 }
@@ -108,12 +110,16 @@ export function parseDiscovery(raw: string, expectedKind: DiscoveryRecord['kind'
   if (typeof rec.token !== 'string' || !ATTACH_TOKEN_SHAPE.test(rec.token)) return undefined;
   if (typeof rec.updatedAt !== 'string' || rec.updatedAt.length === 0) return undefined;
   const version = typeof rec.version === 'string' && rec.version ? rec.version : undefined;
+  const revision = rec.configRevision;
   return {
     kind: expectedKind,
     pid: rec.pid,
     origin: rec.origin,
     token: rec.token,
     ...(version ? { version } : {}),
+    ...(typeof revision === 'number' && Number.isSafeInteger(revision) && revision >= 0
+      ? { configRevision: revision }
+      : {}),
     updatedAt: rec.updatedAt,
   };
 }
@@ -152,6 +158,7 @@ export function buildDiscovery(input: {
   origin: string;
   token: string;
   version?: string;
+  configRevision?: number;
 }): DiscoveryRecord {
   return {
     kind: input.kind,
@@ -159,6 +166,7 @@ export function buildDiscovery(input: {
     origin: input.origin,
     token: input.token,
     ...(input.version ? { version: input.version } : {}),
+    ...(input.configRevision === undefined ? {} : { configRevision: input.configRevision }),
     updatedAt: new Date().toISOString(),
   };
 }

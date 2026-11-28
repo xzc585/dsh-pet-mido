@@ -5,7 +5,6 @@
 判断：提取首帧的 RGBA，A 通道必须有真实层次（存在 >200 的不透明像素，
 也存在 <100 的透明像素）——若全是 255 说明编码丢 alpha，必须修编码命令。
 """
-import os
 import subprocess
 import sys
 
@@ -13,22 +12,20 @@ FFMPEG = "ffmpeg"
 
 
 def check_one(path: str) -> bool:
-    rgba = path[:-4] + (".rgba" if not path.endswith(".rgba") else path)
     r = subprocess.run(
-        [FFMPEG, "-y", "-v", "error", "-i", path, "-ss", "1", "-frames:v", "1",
-         "-f", "rawvideo", "-pix_fmt", "rgba", rgba],
-        capture_output=True, text=True,
+        [FFMPEG, "-v", "error", "-i", path, "-frames:v", "1",
+         "-f", "rawvideo", "-pix_fmt", "rgba", "pipe:1"],
+        capture_output=True,
     )
-    if r.returncode != 0 or not os.path.exists(rgba) or os.path.getsize(rgba) < 16:
-        print(f"  [WARN] {path}: no frame extracted")
-        return True
-    data = open(rgba, "rb").read()
-    alpha = data[3::4]  # rgba 每像素 4 字节，A 是第 4 个
+    if r.returncode != 0 or len(r.stdout) < 16:
+        error = r.stderr.decode("utf-8", errors="replace").strip()
+        print(f"  [FAIL] {path}: no frame extracted {error}")
+        return False
+    alpha = r.stdout[3::4]  # rgba 每像素 4 字节，A 是第 4 个
     a_min, a_max = min(alpha), max(alpha)
     a_mean = sum(alpha) / len(alpha)
     ok = a_max > 200 and a_min < 100
     print(f"  alpha min={a_min} max={a_max} mean={a_mean:.1f} -> {'OK' if ok else '!! LOST'}")
-    os.remove(rgba)
     return ok
 
 

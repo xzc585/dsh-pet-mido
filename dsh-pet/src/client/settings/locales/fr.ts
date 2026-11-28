@@ -329,43 +329,57 @@ export const fr: Record<Key, string> = {
   'motion.action': 'Action aléatoire',
   // Nettoyage du cache (caches du plugin, pas la RAM système)
   cleanupTitle: 'Nettoyage du cache',
-  cleanupHint: 'Libère le cache d’animations, les décodeurs vidéo en arrière-plan et les fichiers vocaux de ce plugin. Cela ne nettoie pas la mémoire vive du système, ni l’historique de discussion, ni la mémoire à long terme. Pour récupérer la mémoire de toute la machine, utilisez « Nettoyage de la mémoire système » ci-dessus. L’intervalle ou le seuil d’utilisation, selon ce qui arrive en premier, déclenche un passage. Un délai minimal évite les enchaînements automatiques. Le bouton manuel reste disponible si l’option est désactivée.',
+  cleanupHint:
+    'Libère le cache d’animations, les décodeurs vidéo en arrière-plan et les fichiers vocaux de ce plugin. Cela ne nettoie pas la mémoire vive du système, ni l’historique de discussion, ni la mémoire à long terme. Pour récupérer la mémoire de toute la machine, utilisez « Nettoyage de la mémoire système » ci-dessus. L’intervalle ou le seuil d’utilisation, selon ce qui arrive en premier, déclenche un passage. Un délai minimal évite les enchaînements automatiques. Le bouton manuel reste disponible si l’option est désactivée.',
   cleanupEnabled: 'Activer le nettoyage programmé',
-  cleanupEnabledHint: 'Une fois désactivé, la minuterie et le seuil ne se lancent plus tout seuls. « Nettoyer maintenant » reste disponible.',
+  cleanupEnabledHint:
+    'Une fois désactivé, la minuterie et le seuil ne se lancent plus tout seuls. « Nettoyer maintenant » reste disponible.',
   cleanupIntervalLabel: 'Intervalle (secondes)',
-  cleanupIntervalHint: 'Compte depuis le dernier nettoyage ou le démarrage du processus. Si l’utilisation atteint d’abord le seuil, le nettoyage a lieu plus tôt.',
+  cleanupIntervalHint:
+    'Compte depuis le dernier nettoyage ou le démarrage du processus. Si l’utilisation atteint d’abord le seuil, le nettoyage a lieu plus tôt.',
   cleanupThresholdLabel: 'Seuil (Mo)',
-  cleanupThresholdHint: 'Le nettoyage est anticipé si le tas du processus ou les caches de cette extension (fichiers vocaux / animations) atteignent cette taille.',
+  cleanupThresholdHint:
+    'Le nettoyage est anticipé si le tas du processus ou les caches de cette extension (fichiers vocaux / animations) atteignent cette taille.',
   cleanupDebounceLabel: 'Délai minimal (secondes)',
-  cleanupDebounceHint: 'Durée minimale entre deux nettoyages automatiques. Elle ne doit pas dépasser l’intervalle, pour qu’un seuil durablement dépassé ne déclenche pas en boucle.',
+  cleanupDebounceHint:
+    'Durée minimale entre deux nettoyages automatiques. Elle ne doit pas dépasser l’intervalle, pour qu’un seuil durablement dépassé ne déclenche pas en boucle.',
   cleanupNow: 'Nettoyer maintenant',
   cleanupDone: 'Nettoyage terminé. Environ {bytes} octets libérés.',
   cleanupFailed: 'Échec du nettoyage. Réessayez plus tard.',
   // Nettoyage de la mémoire système (RAM de toute la machine, pas le cache du plugin)
   systemMemoryTitle: 'Nettoyage de la mémoire système',
-  systemMemoryHint: 'Récupère la mémoire vive physique libérable : réduit les ensembles de travail des processus et, avec des droits d’administrateur, peut aussi vider la liste de veille. Cela ne ferme pas les autres programmes et ne supprime pas l’historique de discussion. Ce n’est pas la même chose que « Nettoyage du cache » plus bas. Les modifications s’appliquent tout de suite ; inutile d’appuyer sur Enregistrer en bas de la page.',
+  systemMemoryHint:
+    'Récupère la mémoire vive physique libérable : réduit les ensembles de travail des processus et, avec des droits d’administrateur, peut aussi vider la liste de veille. Cela ne ferme pas les autres programmes et ne supprime pas l’historique de discussion. Ce n’est pas la même chose que « Nettoyage du cache » plus bas. Les modifications s’appliquent tout de suite ; inutile d’appuyer sur Enregistrer en bas de la page.',
   systemMemoryUsage: 'Utilisation actuelle',
   systemMemoryUsageValue: '{percent} % utilisés ({used} / {total}, {avail} disponibles)',
   systemMemoryAuto: 'Activer le nettoyage automatique',
-  systemMemoryAutoHint: 'Une fois désactivé, le nettoyage automatique par intervalle ou seuil ne s’exécute plus. « Nettoyer maintenant » reste disponible.',
+  systemMemoryAutoHint:
+    'Une fois désactivé, le nettoyage automatique par intervalle ou seuil ne s’exécute plus. « Nettoyer maintenant » reste disponible.',
   systemMemoryIntervalLabel: 'Intervalle (secondes)',
-  systemMemoryIntervalHint: 'Compté depuis le dernier nettoyage ou le démarrage de l’assistant. Si l’utilisation atteint d’abord le seuil, le nettoyage est anticipé. Doit être compris entre 30 et 86400 secondes.',
+  systemMemoryIntervalHint:
+    'Compté depuis le dernier nettoyage ou le démarrage de l’assistant. Si l’utilisation atteint d’abord le seuil, le nettoyage est anticipé. Doit être compris entre 30 et 86400 secondes.',
   systemMemoryThresholdLabel: 'Seuil d’utilisation (%)',
-  systemMemoryThresholdHint: 'Le nettoyage est anticipé lorsque la mémoire physique utilisée atteint ce pourcentage. Doit être compris entre 50 % et 99 %.',
+  systemMemoryThresholdHint:
+    'Le nettoyage est anticipé lorsque la mémoire physique utilisée atteint ce pourcentage. Doit être compris entre 50 % et 99 %.',
   systemMemoryDebounceLabel: 'Intervalle minimal (secondes)',
-  systemMemoryDebounceHint: 'Temps minimal entre deux nettoyages automatiques. Au moins 10 secondes, et pas plus long que l’intervalle.',
+  systemMemoryDebounceHint:
+    'Temps minimal entre deux nettoyages automatiques. Au moins 10 secondes, et pas plus long que l’intervalle.',
   systemMemoryNow: 'Nettoyer maintenant',
   systemMemoryElevated: 'Nettoyage complet en tant qu’administrateur',
-  systemMemoryElevatedHint: 'Windows demandera l’autorisation. En cas de refus, « Nettoyer maintenant » peut encore réduire les ensembles de travail auxquels vous avez accès.',
+  systemMemoryElevatedHint:
+    'Windows demandera l’autorisation. En cas de refus, « Nettoyer maintenant » peut encore réduire les ensembles de travail auxquels vous avez accès.',
   systemMemoryLastClean: 'Dernier nettoyage : l’utilisation est passée de {before} à {after}.',
-  systemMemoryLastCleanAdmin: 'Dernier nettoyage : l’utilisation est passée de {before} à {after} (liste de veille incluse).',
+  systemMemoryLastCleanAdmin:
+    'Dernier nettoyage : l’utilisation est passée de {before} à {after} (liste de veille incluse).',
   systemMemoryUnavailable: 'Impossible de joindre l’assistant de mémoire système pour le moment.',
-  systemMemoryMissing: 'L’assistant de mémoire système est introuvable. Vérifiez qu’il se trouve dans le dossier du plugin.',
+  systemMemoryMissing:
+    'L’assistant de mémoire système est introuvable. Vérifiez qu’il se trouve dans le dossier du plugin.',
   systemMemoryNotWindows: 'Le nettoyage de la mémoire système n’est disponible que sous Windows.',
   systemMemoryFailed: 'Le nettoyage a échoué. Réessayez plus tard.',
   systemMemorySaved: 'Enregistré.',
   systemMemorySaveFailed: 'Impossible d’enregistrer les réglages : {error}',
-  systemMemoryElevatedSent: 'Une demande d’administrateur a été envoyée. Si vous l’acceptez, le nettoyage complet se terminera en arrière-plan.',
+  systemMemoryElevatedSent:
+    'Une demande d’administrateur a été envoyée. Si vous l’acceptez, le nettoyage complet se terminera en arrière-plan.',
   systemMemoryHelperStarting: 'Démarrage de l’assistant de nettoyage mémoire…',
   systemMemoryDone: 'Nettoyage terminé.',
   uninstallCmd: 'dsh plugin --profile {profile} remove dsh-pet',

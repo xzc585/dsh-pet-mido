@@ -328,43 +328,56 @@ export const es: Record<Key, string> = {
   'motion.action': 'Acción aleatoria',
   // Limpieza de caché (cachés del complemento, no la RAM del sistema)
   cleanupTitle: 'Limpieza de caché',
-  cleanupHint: 'Libera la caché de animaciones, los decodificadores de vídeo en segundo plano y los archivos de voz de este complemento. No limpia la RAM del sistema, no borra el historial de chat ni cambia la memoria a largo plazo. Para recuperar memoria de todo el equipo, usa «Limpieza de memoria del sistema» más arriba. Se dispara lo que ocurra antes: el intervalo o el umbral de uso. Un intervalo mínimo evita ejecuciones automáticas seguidas. El botón manual sigue disponible si desactivas la opción.',
+  cleanupHint:
+    'Libera la caché de animaciones, los decodificadores de vídeo en segundo plano y los archivos de voz de este complemento. No limpia la RAM del sistema, no borra el historial de chat ni cambia la memoria a largo plazo. Para recuperar memoria de todo el equipo, usa «Limpieza de memoria del sistema» más arriba. Se dispara lo que ocurra antes: el intervalo o el umbral de uso. Un intervalo mínimo evita ejecuciones automáticas seguidas. El botón manual sigue disponible si desactivas la opción.',
   cleanupEnabled: 'Activar la limpieza programada',
-  cleanupEnabledHint: 'Si está desactivada, el temporizador y el umbral no se ejecutan solos. «Limpiar ahora» sigue disponible.',
+  cleanupEnabledHint:
+    'Si está desactivada, el temporizador y el umbral no se ejecutan solos. «Limpiar ahora» sigue disponible.',
   cleanupIntervalLabel: 'Intervalo (segundos)',
-  cleanupIntervalHint: 'Se cuenta desde la última limpieza o el arranque del proceso. Si el uso alcanza antes el umbral, se limpia antes de tiempo.',
+  cleanupIntervalHint:
+    'Se cuenta desde la última limpieza o el arranque del proceso. Si el uso alcanza antes el umbral, se limpia antes de tiempo.',
   cleanupThresholdLabel: 'Umbral (MB)',
-  cleanupThresholdHint: 'Se limpia antes de tiempo si el montón del proceso o las cachés del complemento (archivos de voz / animaciones) llegan a este tamaño.',
+  cleanupThresholdHint:
+    'Se limpia antes de tiempo si el montón del proceso o las cachés del complemento (archivos de voz / animaciones) llegan a este tamaño.',
   cleanupDebounceLabel: 'Intervalo mínimo (segundos)',
-  cleanupDebounceHint: 'Tiempo mínimo entre limpiezas automáticas. No debe superar el intervalo, para que un umbral siempre alto no dispare la limpieza sin parar.',
+  cleanupDebounceHint:
+    'Tiempo mínimo entre limpiezas automáticas. No debe superar el intervalo, para que un umbral siempre alto no dispare la limpieza sin parar.',
   cleanupNow: 'Limpiar ahora',
   cleanupDone: 'Limpieza terminada. Se han liberado unos {bytes} bytes.',
   cleanupFailed: 'La limpieza ha fallado. Inténtalo de nuevo más tarde.',
   // Limpieza de memoria del sistema (RAM de todo el equipo, no la caché del complemento)
   systemMemoryTitle: 'Limpieza de memoria del sistema',
-  systemMemoryHint: 'Recupera la RAM física liberable: reduce el conjunto de trabajo de los procesos y, con permisos de administrador, también puede vaciar la lista de espera. No cierra otros programas ni borra el historial de chat. No es lo mismo que «Limpieza de caché» más abajo. Los cambios se aplican al momento; no hace falta pulsar Guardar al final de la página.',
+  systemMemoryHint:
+    'Recupera la RAM física liberable: reduce el conjunto de trabajo de los procesos y, con permisos de administrador, también puede vaciar la lista de espera. No cierra otros programas ni borra el historial de chat. No es lo mismo que «Limpieza de caché» más abajo. Los cambios se aplican al momento; no hace falta pulsar Guardar al final de la página.',
   systemMemoryUsage: 'Uso actual',
   systemMemoryUsageValue: '{percent}% en uso ({used} / {total}, {avail} disponible)',
   systemMemoryAuto: 'Activar limpieza automática',
-  systemMemoryAutoHint: 'Si lo desactivas, no se limpiará automáticamente por intervalo o umbral. «Limpiar ahora» sigue disponible.',
+  systemMemoryAutoHint:
+    'Si lo desactivas, no se limpiará automáticamente por intervalo o umbral. «Limpiar ahora» sigue disponible.',
   systemMemoryIntervalLabel: 'Intervalo (segundos)',
-  systemMemoryIntervalHint: 'Se cuenta desde la última limpieza o el arranque del ayudante. Si el uso llega antes al umbral, se adelanta. Debe estar entre 30 y 86400 segundos.',
+  systemMemoryIntervalHint:
+    'Se cuenta desde la última limpieza o el arranque del ayudante. Si el uso llega antes al umbral, se adelanta. Debe estar entre 30 y 86400 segundos.',
   systemMemoryThresholdLabel: 'Umbral de uso (%)',
-  systemMemoryThresholdHint: 'Se adelanta la limpieza cuando la memoria física usada llega a este porcentaje. Debe estar entre 50% y 99%.',
+  systemMemoryThresholdHint:
+    'Se adelanta la limpieza cuando la memoria física usada llega a este porcentaje. Debe estar entre 50% y 99%.',
   systemMemoryDebounceLabel: 'Intervalo mínimo (segundos)',
-  systemMemoryDebounceHint: 'Tiempo mínimo entre limpiezas automáticas. No puede ser menor de 10 segundos ni mayor que el intervalo.',
+  systemMemoryDebounceHint:
+    'Tiempo mínimo entre limpiezas automáticas. No puede ser menor de 10 segundos ni mayor que el intervalo.',
   systemMemoryNow: 'Limpiar ahora',
   systemMemoryElevated: 'Limpieza completa como administrador',
-  systemMemoryElevatedHint: 'Windows pedirá permiso. Si lo rechazas, «Limpiar ahora» seguirá pudiendo reducir los conjuntos de trabajo a los que tengas acceso.',
+  systemMemoryElevatedHint:
+    'Windows pedirá permiso. Si lo rechazas, «Limpiar ahora» seguirá pudiendo reducir los conjuntos de trabajo a los que tengas acceso.',
   systemMemoryLastClean: 'Última limpieza: el uso pasó de {before} a {after}.',
   systemMemoryLastCleanAdmin: 'Última limpieza: el uso pasó de {before} a {after} (incluye la lista de espera).',
   systemMemoryUnavailable: 'No se pudo conectar ahora con el ayudante de memoria del sistema.',
-  systemMemoryMissing: 'No se encontró el ayudante de memoria del sistema. Comprueba que está en la carpeta del complemento.',
+  systemMemoryMissing:
+    'No se encontró el ayudante de memoria del sistema. Comprueba que está en la carpeta del complemento.',
   systemMemoryNotWindows: 'La limpieza de memoria del sistema solo está disponible en Windows.',
   systemMemoryFailed: 'La limpieza falló. Inténtalo de nuevo más tarde.',
   systemMemorySaved: 'Guardado.',
   systemMemorySaveFailed: 'No se pudieron guardar los ajustes: {error}',
-  systemMemoryElevatedSent: 'Se envió una solicitud de administrador. Si la aceptas, la limpieza completa terminará en segundo plano.',
+  systemMemoryElevatedSent:
+    'Se envió una solicitud de administrador. Si la aceptas, la limpieza completa terminará en segundo plano.',
   systemMemoryHelperStarting: 'Iniciando el ayudante de limpieza de memoria…',
   systemMemoryDone: 'Limpieza terminada.',
   uninstallCmd: 'dsh plugin --profile {profile} remove dsh-pet',

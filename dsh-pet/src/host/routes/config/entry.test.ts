@@ -17,6 +17,8 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { savePetLayer } from './entry.ts';
+import { setPetDisplay } from './display.ts';
+import { saveConfigRoute } from './save.ts';
 import type { PetRouteDeps, RouteInput } from '../types.ts';
 import type { RouteResult } from '../../http.ts';
 
@@ -55,6 +57,7 @@ function makeHarness(): Harness {
   const releases: string[] = [];
   let restarts = 0;
   const deps = {
+    ctx: {},
     configPaths: { defaultFile: DEFAULT_FILE, userFile, petDir },
     userConfigPath: userFile,
     userRoot: root,
@@ -179,6 +182,35 @@ describe('savePetLayer —— 整条目写回', () => {
     assert.equal(res.obj.reason, 'bad-request');
     assert.match(String(res.obj.message), /main1/, '文案要指出冲突的 id');
     assert.equal(readFileSync(h.packFile, 'utf8'), before, '冲突时不得写盘');
+  });
+
+  test('并发改两只宠物的显示位置，两次改动都落盘', async () => {
+    const h = makeHarness();
+    writeFileSync(h.userFile, JSON.stringify({ pets: [pet('first'), pet('second')] }));
+    const results = await Promise.all([
+      setPetDisplay(h.deps, input({ id: 'first', display: 'both' })),
+      setPetDisplay(h.deps, input({ id: 'second', display: 'desktop' })),
+    ]);
+    assert.ok(results.every((result) => jsonOf(result).obj.ok !== false));
+    const saved = JSON.parse(readFileSync(h.userFile, 'utf8')) as { pets: Array<{ display: string }> };
+    assert.deepEqual(
+      saved.pets.map((one) => one.display),
+      ['both', 'desktop'],
+    );
+  });
+
+  test('同时在主配置和种类配置新增同一个 id，只接受先提交的配置', async () => {
+    const h = makeHarness();
+    writeFileSync(h.userFile, JSON.stringify({ pets: [pet('main1')] }));
+    writePack(h.packFile);
+    const before = readFileSync(h.packFile, 'utf8');
+    const [main, pack] = await Promise.all([
+      saveConfigRoute(h.deps, input({ pets: [pet('shared-id')] }, 'PUT')),
+      savePetLayer(h.deps, input({ entry: 'glm', pets: [pet('shared-id')] })),
+    ]);
+    assert.notEqual(jsonOf(main).obj.ok, false);
+    assert.equal(jsonOf(pack).obj.reason, 'bad-request');
+    assert.equal(readFileSync(h.packFile, 'utf8'), before);
   });
 
   test('协议层失败保留真实状态码：非 POST 405、坏 JSON 400', async () => {

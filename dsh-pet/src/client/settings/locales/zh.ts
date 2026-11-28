@@ -293,7 +293,8 @@ export const zh = {
   'motion.action': '随机动作',
   // 清理缓存（插件素材缓存，不是系统内存）
   cleanupTitle: '清理缓存',
-  cleanupHint: '释放米豆插件自己的动画缓存、后台视频解码和语音缓存。这不会清理系统内存，也不会删除对话记录或改长期记忆。若要回收整机内存，请用上面的「系统内存清理」。定时与占用阈值谁先到就触发；两次自动清理之间有最短间隔。关掉开关后仍可用「立即清理」。',
+  cleanupHint:
+    '释放米豆插件自己的动画缓存、后台视频解码和语音缓存。这不会清理系统内存，也不会删除对话记录或改长期记忆。若要回收整机内存，请用上面的「系统内存清理」。定时与占用阈值谁先到就触发；两次自动清理之间有最短间隔。关掉开关后仍可用「立即清理」。',
   cleanupEnabled: '启用定时清理',
   cleanupEnabledHint: '关掉后定时与阈值都不再自动跑；「立即清理」仍然可用。',
   cleanupIntervalLabel: '定时间隔（秒）',
@@ -307,13 +308,15 @@ export const zh = {
   cleanupFailed: '清理失败，请稍后重试。',
   // 系统内存清理（整机 RAM，不是插件缓存）
   systemMemoryTitle: '系统内存清理',
-  systemMemoryHint: '回收整机可释放的物理内存：收缩各进程工作集；若以管理员身份清理，还可清空待机列表。不会结束其他程序，也不删除对话记录。这和下面的「清理缓存」不是一回事。改动会立刻生效，不必点页面底部的「保存」。',
+  systemMemoryHint:
+    '回收整机可释放的物理内存：收缩各进程工作集；若以管理员身份清理，还可清空待机列表。不会结束其他程序，也不删除对话记录。这和下面的「清理缓存」不是一回事。改动会立刻生效，不必点页面底部的「保存」。',
   systemMemoryUsage: '当前占用',
   systemMemoryUsageValue: '已用 {percent}%（{used} / {total}，可用 {avail}）',
   systemMemoryAuto: '启用自动清理',
   systemMemoryAutoHint: '关掉后不再按定时或占用阈值自动清理；「立即清理」仍然可用。',
   systemMemoryIntervalLabel: '定时间隔（秒）',
-  systemMemoryIntervalHint: '从上次清理或帮手启动起算。到点就清一次；若占用先达到阈值，会提前清理。须在 30 到 86400 秒之间。',
+  systemMemoryIntervalHint:
+    '从上次清理或帮手启动起算。到点就清一次；若占用先达到阈值，会提前清理。须在 30 到 86400 秒之间。',
   systemMemoryThresholdLabel: '占用阈值（%）',
   systemMemoryThresholdHint: '已用物理内存达到该百分比就提前清理。须在 50% 到 99% 之间。',
   systemMemoryDebounceLabel: '最短间隔（秒）',

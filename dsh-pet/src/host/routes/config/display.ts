@@ -7,10 +7,9 @@
  * @module dsh-pet/src/host/routes/config/display
  */
 import { PET_DISPLAY_SET, findPetInstance, readAllConfig, saveUserConfig } from '../../config.ts';
-import { mkdir, writeFile } from 'node:fs/promises';
 import { type RouteResult } from '../../http.ts';
 import type { PetRouteDeps, RouteInput } from '../types.ts';
-import { resolveConfigLayer } from './layer.ts';
+import { resolveConfigLayer, withConfigWrite, writeConfigLayer } from './layer.ts';
 import { failResult, invalidJson, methodNotAllowed, okResult } from '../result.ts';
 
 /**
@@ -21,6 +20,10 @@ import { failResult, invalidJson, methodNotAllowed, okResult } from '../result.t
  */
 export async function setPetDisplay(deps: PetRouteDeps, input: RouteInput): Promise<RouteResult> {
   if (input.method !== 'POST') return methodNotAllowed();
+  return withConfigWrite(deps.userConfigPath, () => updatePetDisplay(deps, input));
+}
+
+async function updatePetDisplay(deps: PetRouteDeps, input: RouteInput): Promise<RouteResult> {
   let payload: { id?: unknown; display?: unknown };
   try {
     payload = JSON.parse(input.body ?? '') as { id?: unknown; display?: unknown };
@@ -36,7 +39,7 @@ export async function setPetDisplay(deps: PetRouteDeps, input: RouteInput): Prom
   }
   let merged: Record<string, Record<string, unknown>>;
   try {
-    merged = readAllConfig(deps.configPaths);
+    merged = readAllConfig(deps.configPaths, { requireComplete: true });
   } catch (e) {
     return failResult('generate-error', e instanceof Error ? e.message : String(e));
   }
@@ -56,8 +59,7 @@ export async function setPetDisplay(deps: PetRouteDeps, input: RouteInput): Prom
   const clean = saveUserConfig({ pets }, layer.existing);
   if (!clean) return failResult('bad-request', '宠物配置非法');
   try {
-    await mkdir(layer.dir, { recursive: true });
-    await writeFile(layer.path, JSON.stringify(clean, null, 2), 'utf8');
+    await writeConfigLayer(layer.path, clean);
   } catch (e) {
     return failResult('generate-error', e instanceof Error ? e.message : String(e));
   }

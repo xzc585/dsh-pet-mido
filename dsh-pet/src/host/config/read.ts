@@ -36,11 +36,12 @@ interface PetFileEntry {
 }
 
 /** 扫描 pet/ 目录：<名>-config.(json|jsonc) → 条目（按文件名排序） */
-function scanPetFiles(petDir: string): PetFileEntry[] {
+function scanPetFiles(petDir: string, requireComplete = false): PetFileEntry[] {
   let entries;
   try {
     entries = readdirSync(petDir, { withFileTypes: true });
-  } catch {
+  } catch (error) {
+    if (requireComplete && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     return []; // pet/ 目录不存在 = 无文件宠物
   }
   return entries
@@ -69,7 +70,11 @@ export function readPetConfigEntry(
  * 唯一读取函数：内置默认 + 用户主配置 + 文件宠物逐字段合并后的成品聚合。
  * 每个条目都是原文件结构且字段已填满，消费端直接读；每次调用重新读文件，改配置即刻生效。
  */
-export function readAllConfig(paths: ConfigPaths): Record<string, Record<string, unknown>> {
+export function readAllConfig(
+  paths: ConfigPaths,
+  options: { requireComplete?: boolean; excludeEntry?: string } = {},
+): Record<string, Record<string, unknown>> {
+  const { requireComplete = false, excludeEntry } = options;
   const base = readJsonc(paths.defaultFile);
   if (!base) throw new Error('dsh-pet: 内置默认配置缺失或解析失败（安装损坏）：' + paths.defaultFile);
   const basePets = Array.isArray(base.pets) ? (base.pets as Record<string, unknown>[]) : [];
@@ -77,18 +82,19 @@ export function readAllConfig(paths: ConfigPaths): Record<string, Record<string,
   const out: Record<string, Record<string, unknown>> = {};
 
   // main 条目：内置默认 ← main-config.jsonc（可编辑层；迁移前的老用户回落到 main-config.json）
-  const userFile = effectiveUserFile(paths);
-  const mainOverlay = userFile ? readJsonc(userFile) : undefined;
+  const userFile = excludeEntry === 'main' ? undefined : effectiveUserFile(paths, requireComplete);
+  const mainOverlay = userFile ? readJsonc(userFile, requireComplete) : undefined;
   if (userFile && !mainOverlay) {
     warnOnce('file:' + userFile, '用户主配置解析失败，已按无用户配置处理：' + userFile);
   }
-  out.main = mergeEntry(base, mainOverlay, 'main-config.jsonc', basePets, seenIds);
+  if (excludeEntry !== 'main') out.main = mergeEntry(base, mainOverlay, 'main-config.jsonc', basePets, seenIds);
 
   // 文件宠物条目：pet/<名>-config.json，一个文件一个条目（key = 文件名前缀 = 素材根）。
   // 基座 = 内置默认，但白名单字段（用户级成本/偏好/环境）取用户层——「全局默认 + 种类可覆盖」。
   const filePetBase = packBase(base, mainOverlay);
-  for (const file of scanPetFiles(paths.petDir)) {
-    const parsed = readJsonc(file.path);
+  for (const file of scanPetFiles(paths.petDir, requireComplete)) {
+    if (file.prefix === excludeEntry) continue;
+    const parsed = readJsonc(file.path, requireComplete);
     if (!parsed) {
       warnOnce('file:' + file.path, '文件宠物配置解析失败，已跳过：' + file.path);
       continue;

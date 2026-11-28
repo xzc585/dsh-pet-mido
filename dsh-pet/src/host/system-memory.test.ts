@@ -53,6 +53,14 @@ describe('bundledSystemMemoryExe', () => {
     assert.equal(bundledSystemMemoryExe(join(pkg, 'src')), exe);
   });
 
+  test('Windows 解包版从 app.asar 外部找到可执行帮手', async () => {
+    const resources = await mkdtemp(join(tmpdir(), 'dsh-pet-sysmem-resources-'));
+    const packageRoot = join(resources, 'app.asar');
+    const exe = join(resources, 'tools', SYSTEM_MEMORY_EXE);
+    setSystemMemoryRuntime({ packageRoot, exists: (path) => path === exe });
+    assert.equal(bundledSystemMemoryExe(), exe);
+  });
+
   test('找不到就返回 undefined', () => {
     setSystemMemoryRuntime({ packageRoot: '/nope', exists: () => false });
     assert.equal(bundledSystemMemoryExe('/nope'), undefined);

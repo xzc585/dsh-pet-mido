@@ -34,10 +34,13 @@ import type { DesktopHelperDeps } from './types.ts';
 import type { DesktopPets } from './pets.ts';
 
 /** 接入服务的依赖。 */
-export type AttachHostInput = Pick<DesktopHelperDeps, 'ctx' | 'getHandlePetRoute' | 'log'> &
+export type AttachHostInput = Pick<DesktopHelperDeps, 'ctx' | 'getHandlePetRoute'> &
   Pick<DesktopPets, 'desktopPetList'> & {
+    log: Pick<DesktopHelperDeps['log'], 'info' | 'warn'>;
     /** 停掉本插件拉起的桌面 Helper，把桌面窗口让给独立入口。 */
-    stopHelper(reason: string): void;
+    stopHelper(reason: string): Promise<void>;
+    /** 独立入口退出后，恢复按插件自己的桌面配置显示。 */
+    resumeHelper(): void;
   };
 
 /** 进程是否为独立应用，此时禁止开通接入服务。 */
@@ -65,7 +68,7 @@ function readAttachToken(req: IncomingMessage): string {
  * @param deps - 路由、日志与停 Helper 的句柄。
  */
 export function createAttachHost(deps: AttachHostInput) {
-  const { ctx, getHandlePetRoute, log, desktopPetList, stopHelper } = deps;
+  const { ctx, getHandlePetRoute, log, desktopPetList, stopHelper, resumeHelper } = deps;
   const dshHome = dshHomeDir();
   const hostFile = discoveryPath(dshHome, HOST_DISCOVERY_FILE);
   const token = randomBytes(32).toString('base64url');
@@ -75,6 +78,8 @@ export function createAttachHost(deps: AttachHostInput) {
   let watchTimer: NodeJS.Timeout | undefined;
   let heartbeatTimer: NodeJS.Timeout | undefined;
   let standaloneAnnounced = false;
+  let handoff: Promise<void> | undefined;
+  let configRevision = 0;
 
   const isDesktopHost = (): boolean => Boolean(process.versions.electron);
 
@@ -86,6 +91,7 @@ export function createAttachHost(deps: AttachHostInput) {
       pid: process.pid,
       origin,
       token,
+      configRevision,
     });
     writeFileSync(hostFile, JSON.stringify(record), { encoding: 'utf8', mode: 0o600 });
   };
@@ -102,6 +108,18 @@ export function createAttachHost(deps: AttachHostInput) {
     readLiveDiscovery(dshHome, STANDALONE_DISCOVERY_FILE, STANDALONE_KIND);
 
   const hasLiveStandalone = (): boolean => currentStandalone() !== undefined;
+
+  const notifyConfigChanged = (): void => {
+    configRevision += 1;
+    writeHostFile();
+  };
+
+  const yieldDesktop = (): Promise<void> => {
+    handoff ??= stopHelper('standalone-attached').finally(() => {
+      handoff = undefined;
+    });
+    return handoff;
+  };
 
   const openTarget = (): OpenTarget => {
     let siteOrigin = 'http://127.0.0.1';
@@ -159,6 +177,18 @@ export function createAttachHost(deps: AttachHostInput) {
       return;
     }
     if (url.pathname === '/mido-attach/session' && (method === 'GET' || method === 'HEAD')) {
+      // 独立入口拿到会话后才能建窗。若巡检已开始停 Helper，共用同一次退出等待。
+      if (hasLiveStandalone()) {
+        try {
+          await yieldDesktop();
+          standaloneAnnounced = true;
+        } catch (error) {
+          log.warn(`[dsh-pet] 桌面 Helper 让位失败：${error instanceof Error ? error.message : String(error)}`);
+          if (!res.destroyed) sendJson(res, 503, { error: '暂时无法切换桌面宠物，请重试。' });
+          return;
+        }
+      }
+      if (res.destroyed) return;
       // siteUrl 含 DSH 入口令牌：只在已鉴权的本机响应里给出，不写进发现文件、不打日志。
       sendJson(res, 200, {
         ok: true,
@@ -202,9 +232,17 @@ export function createAttachHost(deps: AttachHostInput) {
     if (live && !standaloneAnnounced) {
       standaloneAnnounced = true;
       log.info('[dsh-pet] 检测到米豆独立入口正在运行，停止本插件的桌面 Helper，避免同时出现两只宠物');
-      stopHelper('standalone-attached');
-    } else if (!live) {
+      void yieldDesktop().catch((error: unknown) => {
+        log.warn(`[dsh-pet] 桌面 Helper 让位失败：${error instanceof Error ? error.message : String(error)}`);
+        standaloneAnnounced = false;
+      });
+    } else if (!live && standaloneAnnounced) {
       standaloneAnnounced = false;
+      const resume = () => {
+        if (!disposed && !hasLiveStandalone()) resumeHelper();
+      };
+      if (handoff) void handoff.then(resume, resume);
+      else resume();
     }
   };
 
@@ -249,9 +287,8 @@ export function createAttachHost(deps: AttachHostInput) {
     current.close();
   };
 
-  return { start, stop, hasLiveStandalone, isStandaloneAppProcess: isStandaloneAppProcess() };
+  return { start, stop, hasLiveStandalone, notifyConfigChanged, isStandaloneAppProcess: isStandaloneAppProcess() };
 }
 
 /** 接入服务的产出。 */
 export type AttachHost = ReturnType<typeof createAttachHost>;
-

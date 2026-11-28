@@ -58,9 +58,6 @@ describe('handleMemoryCleanupRoutes', () => {
     } as unknown as PetRouteDeps;
     const denied = await handleMemoryCleanupRoutes(deps, input('PUT'));
     assert.equal((denied as { status: number }).status, 405);
-    assert.equal(
-      await handleMemoryCleanupRoutes(deps, { ...input('GET'), rest: 'memory/providers' }),
-      undefined,
-    );
+    assert.equal(await handleMemoryCleanupRoutes(deps, { ...input('GET'), rest: 'memory/providers' }), undefined);
   });
 });

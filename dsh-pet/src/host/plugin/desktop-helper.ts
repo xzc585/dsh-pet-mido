@@ -20,19 +20,18 @@ export type { DesktopHelperDeps };
  */
 export function createDesktopHelper(deps: DesktopHelperDeps) {
   const pets = createDesktopPets(deps);
-  const spawn = createDesktopSpawn({ ...deps, ...pets });
+  const spawn = createDesktopSpawn({ ...deps, ...pets, hasLiveStandalone: () => attach.hasLiveStandalone() });
   const attach = createAttachHost({
     ...deps,
     ...pets,
-    stopHelper: () => spawn.stopHelper('standalone-attached'),
+    stopHelper: spawn.stopHelperAndWait,
+    resumeHelper: spawn.startHelper,
   });
   const startHelper = (): void => {
     // 先开放本机接入服务并写入发现文件，独立入口才能连上；再决定要不要自己拉 Helper。
     attach.start();
     if (attach.hasLiveStandalone()) {
-      deps.log.info(
-        '[dsh-pet] 米豆独立入口已在桌面上运行，不再拉起第二只桌面宠物；宿主能力会交给那只已有的米豆',
-      );
+      deps.log.info('[dsh-pet] 米豆独立入口已在桌面上运行，不再拉起第二只桌面宠物；宿主能力会交给那只已有的米豆');
       return;
     }
     spawn.startHelper();
@@ -40,11 +39,21 @@ export function createDesktopHelper(deps: DesktopHelperDeps) {
   const stopHelper = (reason = 'settings-change'): void => {
     spawn.stopHelper(reason);
   };
+  const sync = createDesktopSync({
+    ...deps,
+    ...pets,
+    ...spawn,
+    startHelper: () => {
+      if (attach.hasLiveStandalone()) attach.notifyConfigChanged();
+      else startHelper();
+    },
+    stopHelperAndWait: spawn.stopHelperAndWait,
+  });
   const markDisposed = (): void => {
+    sync.dispose();
     attach.stop();
     spawn.markDisposed();
   };
-  const sync = createDesktopSync({ ...deps, ...pets, ...spawn, startHelper, stopHelperAndWait: spawn.stopHelperAndWait });
   return {
     startHelper,
     stopHelper,

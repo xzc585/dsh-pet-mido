@@ -323,43 +323,55 @@ export const de: Record<Key, string> = {
   'motion.action': 'Zufallsaktion',
   // Cache bereinigen (Plugin-Caches, nicht der System-RAM)
   cleanupTitle: 'Cache bereinigen',
-  cleanupHint: 'Gibt die Animations-Caches, Hintergrund-Videodecoder und Sprachcache-Dateien dieses Plugins frei. Der System-Arbeitsspeicher wird nicht bereinigt, Chatverlauf und Langzeitgedächtnis bleiben unberührt. Um den Speicher des ganzen Rechners zurückzuholen, nutze oben „Systemspeicher bereinigen“. Es gilt, was zuerst eintritt: das Intervall oder die Nutzungsschwelle. Ein Mindestabstand verhindert automatische Doppelbereinigungen. Der manuelle Knopf bleibt nutzbar, wenn die Option aus ist.',
+  cleanupHint:
+    'Gibt die Animations-Caches, Hintergrund-Videodecoder und Sprachcache-Dateien dieses Plugins frei. Der System-Arbeitsspeicher wird nicht bereinigt, Chatverlauf und Langzeitgedächtnis bleiben unberührt. Um den Speicher des ganzen Rechners zurückzuholen, nutze oben „Systemspeicher bereinigen“. Es gilt, was zuerst eintritt: das Intervall oder die Nutzungsschwelle. Ein Mindestabstand verhindert automatische Doppelbereinigungen. Der manuelle Knopf bleibt nutzbar, wenn die Option aus ist.',
   cleanupEnabled: 'Zeitgesteuerte Bereinigung aktivieren',
-  cleanupEnabledHint: 'Ist die Option aus, laufen Timer und Schwelle nicht automatisch. „Jetzt bereinigen“ bleibt verfügbar.',
+  cleanupEnabledHint:
+    'Ist die Option aus, laufen Timer und Schwelle nicht automatisch. „Jetzt bereinigen“ bleibt verfügbar.',
   cleanupIntervalLabel: 'Intervall (Sekunden)',
-  cleanupIntervalHint: 'Zählt ab der letzten Bereinigung oder dem Prozessstart. Liegt die Nutzung früher über der Schwelle, wird früher bereinigt.',
+  cleanupIntervalHint:
+    'Zählt ab der letzten Bereinigung oder dem Prozessstart. Liegt die Nutzung früher über der Schwelle, wird früher bereinigt.',
   cleanupThresholdLabel: 'Schwelle (MB)',
-  cleanupThresholdHint: 'Die Bereinigung erfolgt früher, wenn der Prozess-Heap oder die Caches dieses Plugins (Sprachdateien / Animationen) diese Größe erreichen.',
+  cleanupThresholdHint:
+    'Die Bereinigung erfolgt früher, wenn der Prozess-Heap oder die Caches dieses Plugins (Sprachdateien / Animationen) diese Größe erreichen.',
   cleanupDebounceLabel: 'Mindestabstand (Sekunden)',
-  cleanupDebounceHint: 'Kürzester Abstand zwischen automatischen Bereinigungen. Darf das Intervall nicht überschreiten, damit eine dauerhaft überschrittene Schwelle nicht ununterbrochen auslöst.',
+  cleanupDebounceHint:
+    'Kürzester Abstand zwischen automatischen Bereinigungen. Darf das Intervall nicht überschreiten, damit eine dauerhaft überschrittene Schwelle nicht ununterbrochen auslöst.',
   cleanupNow: 'Jetzt bereinigen',
   cleanupDone: 'Bereinigung abgeschlossen. Etwa {bytes} Byte freigegeben.',
   cleanupFailed: 'Bereinigung fehlgeschlagen. Bitte später erneut versuchen.',
   // Systemspeicher bereinigen (RAM des ganzen Rechners, nicht der Plugin-Cache)
   systemMemoryTitle: 'Systemspeicher bereinigen',
-  systemMemoryHint: 'Holt freigebbaren physischen Arbeitsspeicher zurück: verkleinert die Working Sets der Prozesse und kann mit Administratorrechten auch die Standby-Liste leeren. Andere Programme werden nicht beendet, der Chatverlauf bleibt erhalten. Das ist nicht dasselbe wie „Cache bereinigen“ darunter. Änderungen gelten sofort; du musst unten nicht auf Speichern drücken.',
+  systemMemoryHint:
+    'Holt freigebbaren physischen Arbeitsspeicher zurück: verkleinert die Working Sets der Prozesse und kann mit Administratorrechten auch die Standby-Liste leeren. Andere Programme werden nicht beendet, der Chatverlauf bleibt erhalten. Das ist nicht dasselbe wie „Cache bereinigen“ darunter. Änderungen gelten sofort; du musst unten nicht auf Speichern drücken.',
   systemMemoryUsage: 'Aktuelle Auslastung',
   systemMemoryUsageValue: '{percent} % belegt ({used} / {total}, {avail} verfügbar)',
   systemMemoryAuto: 'Automatische Bereinigung einschalten',
   systemMemoryAutoHint: 'Wenn aus, laufen Intervall und Schwelle nicht automatisch. „Jetzt bereinigen“ bleibt nutzbar.',
   systemMemoryIntervalLabel: 'Intervall (Sekunden)',
-  systemMemoryIntervalHint: 'Zählt ab der letzten Bereinigung oder dem Start des Helfers. Wird die Schwelle früher erreicht, läuft die Bereinigung früher. Muss zwischen 30 und 86400 Sekunden liegen.',
+  systemMemoryIntervalHint:
+    'Zählt ab der letzten Bereinigung oder dem Start des Helfers. Wird die Schwelle früher erreicht, läuft die Bereinigung früher. Muss zwischen 30 und 86400 Sekunden liegen.',
   systemMemoryThresholdLabel: 'Nutzungsschwelle (%)',
-  systemMemoryThresholdHint: 'Die Bereinigung läuft früher, wenn der belegte physische Speicher diesen Prozentsatz erreicht. Muss zwischen 50 % und 99 % liegen.',
+  systemMemoryThresholdHint:
+    'Die Bereinigung läuft früher, wenn der belegte physische Speicher diesen Prozentsatz erreicht. Muss zwischen 50 % und 99 % liegen.',
   systemMemoryDebounceLabel: 'Mindestabstand (Sekunden)',
-  systemMemoryDebounceHint: 'Kürzester Abstand zwischen automatischen Bereinigungen. Mindestens 10 Sekunden, und nicht länger als das Intervall.',
+  systemMemoryDebounceHint:
+    'Kürzester Abstand zwischen automatischen Bereinigungen. Mindestens 10 Sekunden, und nicht länger als das Intervall.',
   systemMemoryNow: 'Jetzt bereinigen',
   systemMemoryElevated: 'Vollständige Bereinigung als Administrator',
-  systemMemoryElevatedHint: 'Windows fragt nach einer Freigabe. Lehnst du ab, kann „Jetzt bereinigen“ weiterhin erreichbare Working Sets verkleinern.',
+  systemMemoryElevatedHint:
+    'Windows fragt nach einer Freigabe. Lehnst du ab, kann „Jetzt bereinigen“ weiterhin erreichbare Working Sets verkleinern.',
   systemMemoryLastClean: 'Letzte Bereinigung: die Belegung ging von {before} auf {after}.',
-  systemMemoryLastCleanAdmin: 'Letzte Bereinigung: die Belegung ging von {before} auf {after} (inklusive Standby-Liste).',
+  systemMemoryLastCleanAdmin:
+    'Letzte Bereinigung: die Belegung ging von {before} auf {after} (inklusive Standby-Liste).',
   systemMemoryUnavailable: 'Der Systemspeicher-Helfer ist gerade nicht erreichbar.',
   systemMemoryMissing: 'Der Systemspeicher-Helfer wurde nicht gefunden. Bitte prüfe, ob er im Plugin-Ordner liegt.',
   systemMemoryNotWindows: 'Das Bereinigen des Systemspeichers ist nur unter Windows verfügbar.',
   systemMemoryFailed: 'Die Bereinigung ist fehlgeschlagen. Bitte später erneut versuchen.',
   systemMemorySaved: 'Gespeichert.',
   systemMemorySaveFailed: 'Einstellungen konnten nicht gespeichert werden: {error}',
-  systemMemoryElevatedSent: 'Eine Administrator-Anfrage wurde gesendet. Wenn du zustimmst, läuft die vollständige Bereinigung im Hintergrund zu Ende.',
+  systemMemoryElevatedSent:
+    'Eine Administrator-Anfrage wurde gesendet. Wenn du zustimmst, läuft die vollständige Bereinigung im Hintergrund zu Ende.',
   systemMemoryHelperStarting: 'Der Speicherbereinigungs-Helfer wird gestartet…',
   systemMemoryDone: 'Bereinigung abgeschlossen.',
   uninstallCmd: 'dsh plugin --profile {profile} remove dsh-pet',

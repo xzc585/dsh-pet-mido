@@ -107,7 +107,15 @@ describe('takeChanged —— counter 变了才算变化', () => {
 
 describe('resolveLeafPath —— 路径解析成落点（分发规则的唯一口径）', () => {
   test('sections 的叶子各自解析成落点', () => {
-    for (const name of ['config', 'balance', 'workStatus', 'notify', 'menu', 'focusSession', 'memoryCleanup'] as const) {
+    for (const name of [
+      'config',
+      'balance',
+      'workStatus',
+      'notify',
+      'menu',
+      'focusSession',
+      'memoryCleanup',
+    ] as const) {
       assert.deepEqual(resolveLeafPath('sections.' + name), { where: 'section', name });
     }
   });

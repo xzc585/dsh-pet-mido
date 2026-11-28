@@ -134,7 +134,7 @@ $DSH_HOME/dsh-pet/
 - 设置页**会列出**文件宠物（按种类分组）：改名称/大小/位置/显示方式/四个开关/实例人设后保存，写回该种类自己的配置文件——不混进 `main-config.jsonc`，文件顶层的动画池与人设原样保留；「+」可在该种类下新建实例，每种至少留一只
 - 余额档位动画按各宠物自己的 `events.balance`
 
-## 清理内存（`memoryCleanup`）
+## 清理缓存（`memoryCleanup`）
 
 > 与上文的「长期记忆」`memory` / `chatMemoryRounds` 不是同一段，不要复用或改写那一段。
 

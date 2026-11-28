@@ -6,7 +6,8 @@
  * @module dsh-pet/src/host/config/save
  */
 import { defaultLog } from '../log-file.ts';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
+import { writeTextAtomicallySync } from '../atomic-file.ts';
 import { dirname } from 'node:path';
 import { CORNER_SET, isValidPetId, PET_DISPLAY_SET } from './constants.ts';
 import { isValidSizePercent } from '../../shared/pet-size.ts';
@@ -14,6 +15,8 @@ import type { ConfigPaths } from './constants.ts';
 import { fontValid, modelSelectionValid, physicsValid, topFieldValid } from './validate.ts';
 import { memoryCleanupValid, type MemoryCleanupConfig } from '../../shared/memory-cleanup.ts';
 import type { MemoryConfig } from '../../shared/memory.ts';
+
+type SavedPet = Record<string, unknown> & { id: string };
 
 /**
  * 保存用户层（PUT /config）：接受 pets + 全局开关 + physics / font / 两个模型 / 对话参数。
@@ -24,11 +27,11 @@ import type { MemoryConfig } from '../../shared/memory.ts';
 export function saveUserConfig(
   raw: unknown,
   existing?: Record<string, unknown>,
-): { pets: unknown[]; [key: string]: unknown } | null {
+): { pets: SavedPet[]; [key: string]: unknown } | null {
   const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const arr = Array.isArray(o.pets) ? o.pets : null;
   if (!arr || !arr.length) return null;
-  const out: unknown[] = [];
+  const out: SavedPet[] = [];
   const seenIds = new Set<string>();
   for (const p of arr) {
     if (!p || typeof p !== 'object') return null;
@@ -75,7 +78,7 @@ export function saveUserConfig(
     const rawPersona = pp.whisperPrompt;
     if (rawPersona !== undefined && rawPersona !== null && typeof rawPersona !== 'string') return null;
     const persona = typeof rawPersona === 'string' ? rawPersona.trim() : '';
-    const pet: Record<string, unknown> = {
+    const pet: SavedPet = {
       id,
       name,
       size,
@@ -200,7 +203,7 @@ export function saveUserConfig(
   };
   // 白名单可编辑字段：pets 来自请求体，其余（四个全局开关 / physics / 两个模型 /
   // 对话历史条数）同样只在请求体真的传了时才写（未传则走下面的透传保留，不凭空造值）
-  const outConfig: { pets: unknown[]; [key: string]: unknown } = { pets: out };
+  const outConfig: { pets: SavedPet[]; [key: string]: unknown } = { pets: out };
   if (ne !== undefined) outConfig.notificationsEnabled = ne;
   if (nwf !== undefined) outConfig.notifyWhenFocused = nwf;
   if (cse !== undefined) outConfig.clickSoundEnabled = cse;
@@ -277,7 +280,7 @@ export function saveUserConfig(
 export function syncUserConfigFromDefault(paths: ConfigPaths): void {
   const raw = readFileSync(paths.defaultFile, 'utf8');
   mkdirSync(dirname(paths.userFile), { recursive: true });
-  writeFileSync(paths.userFile, raw, 'utf8');
+  writeTextAtomicallySync(paths.userFile, raw);
 }
 
 /**

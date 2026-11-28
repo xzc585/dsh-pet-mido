@@ -183,8 +183,14 @@ export function makeSystemMemoryCard(rt: SettingsRuntime): FunctionComponent<Sys
     const lastCleanText = (report: CleanReport | undefined): string => {
       if (!report || !report.before || !report.after) return '';
       return (report.standbyCleared ? t('systemMemoryLastCleanAdmin') : t('systemMemoryLastClean'))
-        .replace('{before}', formatMemoryBytes(report.before.usedBytes ?? 0) + '（' + formatPercent(report.before.usedPercent) + '%）')
-        .replace('{after}', formatMemoryBytes(report.after.usedBytes ?? 0) + '（' + formatPercent(report.after.usedPercent) + '%）');
+        .replace(
+          '{before}',
+          formatMemoryBytes(report.before.usedBytes ?? 0) + '（' + formatPercent(report.before.usedPercent) + '%）',
+        )
+        .replace(
+          '{after}',
+          formatMemoryBytes(report.after.usedBytes ?? 0) + '（' + formatPercent(report.after.usedPercent) + '%）',
+        );
     };
 
     const run = (action: () => Promise<SystemMemoryStatus>, okText?: string): void => {
@@ -234,26 +240,46 @@ export function makeSystemMemoryCard(rt: SettingsRuntime): FunctionComponent<Sys
           className: 'dsh-pet-cfg__flabel',
           children: t('systemMemoryUsage') + '：' + usageText,
         }),
-        lastText
-          ? h('p', { className: 'dsh-pet-cfg__flabel', children: lastText })
-          : null,
+        lastText ? h('p', { className: 'dsh-pet-cfg__flabel', children: lastText }) : null,
         h('div', {
           className: 'dsh-pet-cfg__grid2',
           children: [
             toggleCell('systemMemoryAuto', config.autoClean, disabled, (value) => patchConfig({ autoClean: value })),
             field(
               t('systemMemoryIntervalLabel'),
-              h('input', numberInputProps(config.intervalSec, (value) => patchConfig({ intervalSec: Math.round(value) }), { min: 30, max: 86400, step: 1, disabled })),
+              h(
+                'input',
+                numberInputProps(config.intervalSec, (value) => patchConfig({ intervalSec: Math.round(value) }), {
+                  min: 30,
+                  max: 86400,
+                  step: 1,
+                  disabled,
+                }),
+              ),
               t('systemMemoryIntervalHint'),
             ),
             field(
               t('systemMemoryThresholdLabel'),
-              h('input', numberInputProps(config.thresholdPercent, (value) => patchConfig({ thresholdPercent: Math.round(value) }), { min: 50, max: 99, step: 1, disabled })),
+              h(
+                'input',
+                numberInputProps(
+                  config.thresholdPercent,
+                  (value) => patchConfig({ thresholdPercent: Math.round(value) }),
+                  { min: 50, max: 99, step: 1, disabled },
+                ),
+              ),
               t('systemMemoryThresholdHint'),
             ),
             field(
               t('systemMemoryDebounceLabel'),
-              h('input', numberInputProps(config.debounceSec, (value) => patchConfig({ debounceSec: Math.round(value) }), { min: 10, step: 1, disabled })),
+              h(
+                'input',
+                numberInputProps(config.debounceSec, (value) => patchConfig({ debounceSec: Math.round(value) }), {
+                  min: 10,
+                  step: 1,
+                  disabled,
+                }),
+              ),
               t('systemMemoryDebounceHint'),
             ),
           ],

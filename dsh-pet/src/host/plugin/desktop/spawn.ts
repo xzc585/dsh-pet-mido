@@ -26,7 +26,9 @@ export type DesktopSpawnInput = Pick<
   DesktopHelperDeps,
   'ctx' | 'getHandlePetRoute' | 'log' | 'reportDownload' | 'thumbUserRoot'
 > &
-  Pick<DesktopPets, 'getHasDesktopPet' | 'desktopPetList' | 'getTrayOn'>;
+  Pick<DesktopPets, 'getHasDesktopPet' | 'desktopPetList' | 'getTrayOn'> & {
+    hasLiveStandalone: () => boolean;
+  };
 
 /** 宿主是不是 DSH 桌面应用（Electron 宿主）。 */
 const isDesktopHost = (): boolean => Boolean(process.versions.electron);
@@ -58,6 +60,7 @@ export function createDesktopSpawn(deps: DesktopSpawnInput) {
   let desktopModeEverActive = false;
 
   let helper: HelperProcess | undefined;
+  let stoppingHelper: Promise<void> | undefined;
 
   let startRetryTimer: NodeJS.Timeout | undefined;
 
@@ -75,7 +78,7 @@ export function createDesktopSpawn(deps: DesktopSpawnInput) {
 
   const launchHelper = (electronPath: string | undefined): void => {
     if (inProcessHost) return; // 应用模式：窗口由本进程建，绝不 spawn
-    if (helper || disposed) return;
+    if (helper || disposed || stoppingHelper || deps.hasLiveStandalone()) return;
     // 无桌面宠物时：只有「桌面模式曾启用过且托盘还开着」才值得为托盘常驻，否则不启动
     if (!getHasDesktopPet() && !(desktopModeEverActive && getTrayOn())) return;
     const port = typeof ctx.webServer?.port === 'number' ? ctx.webServer.port : 0;
@@ -229,9 +232,13 @@ export function createDesktopSpawn(deps: DesktopSpawnInput) {
       clearTimeout(startRetryTimer);
       startRetryTimer = undefined;
     }
-    const old = helper;
-    helper = undefined;
-    await old?.stopAndWait(reason);
+    if (!stoppingHelper && helper) {
+      stoppingHelper = helper.stopAndWait(reason).finally(() => {
+        stoppingHelper = undefined;
+      });
+      helper = undefined;
+    }
+    await stoppingHelper;
   };
 
   const animSubdirFor = (ext: string): string => (ext === '.mov' ? 'mov' : 'webm');

@@ -9,7 +9,7 @@
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 import { PACKAGE_ROOT } from './paths.ts';
 
@@ -115,6 +115,7 @@ export function resetSystemMemoryHelperForTest(): void {
 export function bundledSystemMemoryExe(packageRoot = runtime.packageRoot): string | undefined {
   const exists = runtime.exists;
   const candidates = [
+    ...(basename(packageRoot) === 'app.asar' ? [join(packageRoot, '..', 'tools', SYSTEM_MEMORY_EXE)] : []),
     join(packageRoot, 'assets', 'tools', SYSTEM_MEMORY_EXE),
     join(packageRoot, '..', 'assets', 'tools', SYSTEM_MEMORY_EXE),
     join(packageRoot, '..', 'tools', 'mido-ram-cleaner', 'dist', SYSTEM_MEMORY_EXE),
@@ -185,9 +186,7 @@ export async function ensureSystemMemoryHelper(): Promise<SystemMemoryStatus> {
   if (!starting) {
     starting = (async () => {
       const ok = await spawnAndWait(exe);
-      return ok
-        ? { ok: true, available: true }
-        : unavailable('helper-failed', '暂时无法连接到系统内存清理帮手。');
+      return ok ? { ok: true, available: true } : unavailable('helper-failed', '暂时无法连接到系统内存清理帮手。');
     })().finally(() => {
       starting = undefined;
     });
@@ -234,7 +233,12 @@ function asSnap(value: unknown): SystemMemorySnap | undefined {
   const availableBytes = asNumber(raw.availableBytes);
   const usedBytes = asNumber(raw.usedBytes);
   const usedPercent = asNumber(raw.usedPercent);
-  if (totalBytes === undefined || availableBytes === undefined || usedBytes === undefined || usedPercent === undefined) {
+  if (
+    totalBytes === undefined ||
+    availableBytes === undefined ||
+    usedBytes === undefined ||
+    usedPercent === undefined
+  ) {
     return undefined;
   }
   return { totalBytes, availableBytes, usedBytes, usedPercent };
@@ -246,7 +250,12 @@ function asConfig(value: unknown): SystemMemoryConfig | undefined {
   const intervalSec = asNumber(raw.intervalSec);
   const thresholdPercent = asNumber(raw.thresholdPercent);
   const debounceSec = asNumber(raw.debounceSec);
-  if (typeof raw.autoClean !== 'boolean' || intervalSec === undefined || thresholdPercent === undefined || debounceSec === undefined) {
+  if (
+    typeof raw.autoClean !== 'boolean' ||
+    intervalSec === undefined ||
+    thresholdPercent === undefined ||
+    debounceSec === undefined
+  ) {
     return undefined;
   }
   return { autoClean: raw.autoClean, intervalSec, thresholdPercent, debounceSec };
@@ -311,7 +320,10 @@ export async function callSystemMemoryApi(path: string, init?: RequestInit): Pro
     const body = await readHelperJson(response);
     if (!response.ok) {
       const message =
-        body && typeof body === 'object' && !Array.isArray(body) && typeof (body as { error?: unknown }).error === 'string'
+        body &&
+        typeof body === 'object' &&
+        !Array.isArray(body) &&
+        typeof (body as { error?: unknown }).error === 'string'
           ? (body as { error: string }).error
           : '暂时无法连接到系统内存清理帮手。';
       return { ok: false, available: true, message };

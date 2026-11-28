@@ -249,16 +249,21 @@ if (process.env.DSH_PET_IN_PROCESS === '1') {
     petWindows.create();
     await tray.refresh();
   };
-  globalThis.__dshPetRetargetHost = async () => {
+  globalThis.__dshPetRetargetHost = async (session) => {
     // 配置地址、打开目标与连接状态已由应用主进程写进环境变量；这里只重建窗口，不新开进程。
+    bridge.setHost({ origin: new URL(session.configUrl).origin, token: session.token });
     petWindows.closeAll();
     petWindows.create();
-    await tray.refresh();
+    void tray.refresh();
   };
   globalThis.__dshPetFocusWindows = () => {
+    let reachable = tray.exists();
     for (const win of petWindows.state.windows.values()) {
-      if (!win.isDestroyed()) win.showInactive();
+      if (win.isDestroyed()) continue;
+      win.showInactive();
+      reachable = true;
     }
+    return reachable;
   };
 }
 

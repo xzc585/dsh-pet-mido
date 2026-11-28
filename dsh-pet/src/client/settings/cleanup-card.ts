@@ -32,7 +32,11 @@ export interface CleanupCardProps {
 export async function triggerMemoryCleanup(): Promise<{ ok: boolean; text: string }> {
   try {
     const response = await fetch(ROUTE_PATH + '/memory-cleanup', { method: 'POST' });
-    const body = (await response.json().catch(() => null)) as { ok?: unknown; freedBytes?: unknown; reason?: unknown } | null;
+    const body = (await response.json().catch(() => null)) as {
+      ok?: unknown;
+      freedBytes?: unknown;
+      reason?: unknown;
+    } | null;
     if (!response.ok || !body || body.ok === false) return { ok: false, text: 'cleanupFailed' };
     const freed = typeof body.freedBytes === 'number' ? body.freedBytes : 0;
     return { ok: true, text: String(freed) };
@@ -82,17 +86,26 @@ export function makeCleanupCard(rt: SettingsRuntime): FunctionComponent<CleanupC
             toggleCell('cleanupEnabled', props.enabled, props.busy, props.onEnabled),
             field(
               t('cleanupIntervalLabel'),
-              h('input', numberInputProps(props.intervalSec, props.onInterval, { min: 1, step: 1, disabled: props.busy })),
+              h(
+                'input',
+                numberInputProps(props.intervalSec, props.onInterval, { min: 1, step: 1, disabled: props.busy }),
+              ),
               t('cleanupIntervalHint'),
             ),
             field(
               t('cleanupThresholdLabel'),
-              h('input', numberInputProps(props.thresholdMb, props.onThreshold, { min: 1, step: 1, disabled: props.busy })),
+              h(
+                'input',
+                numberInputProps(props.thresholdMb, props.onThreshold, { min: 1, step: 1, disabled: props.busy }),
+              ),
               t('cleanupThresholdHint'),
             ),
             field(
               t('cleanupDebounceLabel'),
-              h('input', numberInputProps(props.debounceSec, props.onDebounce, { min: 1, step: 1, disabled: props.busy })),
+              h(
+                'input',
+                numberInputProps(props.debounceSec, props.onDebounce, { min: 1, step: 1, disabled: props.busy }),
+              ),
               t('cleanupDebounceHint'),
             ),
           ],

@@ -124,7 +124,6 @@ describe('readMainConfig —— 成品聚合 → 表单补丁', () => {
     );
   });
 
-
   test('清理内存：合法段带出，缺段或坏值不覆盖表单默认（读函数回落默认只在段存在时发生）', () => {
     const ok = readMainConfig({
       main: { pets: [], memoryCleanup: { enabled: false, intervalSec: 60, thresholdMb: 128, debounceSec: 30 } },

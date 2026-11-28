@@ -7,10 +7,15 @@
  */
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const require = createRequire(import.meta.url);
 const { parseRange } = require('../../runtime/electron-helper/range.js');
+const { createBridge } = require('../../runtime/electron-helper/main/bridge.js');
 
 describe('parseRange —— bridge 素材应答的 Range 解析', () => {
   test('完整请求：bytes=0- → 整个文件', () => {
@@ -48,4 +53,47 @@ describe('parseRange —— bridge 素材应答的 Range 解析', () => {
   test('文件长度为 0：bytes=0- → 忽略', () => {
     assert.equal(parseRange('bytes=0-', 0), null);
   });
+});
+
+test('bridge streams the selected range, handles 416 and falls back to a full response', async (t) => {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'dsh-pet-bridge-'));
+  const file = join(dir, 'test.webm');
+  await fs.writeFile(file, '0123456789');
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const wholeFileRead = t.mock.method(fs, 'readFile');
+  const prefix = 'TEST_BRIDGE_REQUEST ';
+  const bridge = createBridge({ isBridge: true, prefix, origin: '' });
+  const server = bridge.startCallback();
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  await once(server, 'listening');
+  let reply;
+  const originalWrite = process.stdout.write;
+  t.mock.method(process.stdout, 'write', function (chunk, ...args) {
+    if (!String(chunk).startsWith(prefix)) return originalWrite.call(this, chunk, ...args);
+    const { id, cb } = JSON.parse(String(chunk).slice(prefix.length));
+    reply = fetch(cb, { method: 'POST', body: JSON.stringify({ id, status: 200, contentType: 'video/webm', file }) });
+    return true;
+  });
+  const handle = async (range) => {
+    const request = new Request('dsh-pet-bridge://dsh-pet/thumb/test.webm', { headers: { range } });
+    const response = await bridge.handle(request);
+    assert.equal(await (await reply).text(), 'ok');
+    return response;
+  };
+
+  const partial = await handle('bytes=3-5');
+  assert.equal(partial.status, 206);
+  assert.equal(partial.headers.get('content-range'), 'bytes 3-5/10');
+  assert.equal(partial.headers.get('content-length'), '3');
+  assert.equal(await partial.text(), '345');
+
+  const unsatisfiable = await handle('bytes=10-');
+  assert.equal(unsatisfiable.status, 416);
+  assert.equal(unsatisfiable.headers.get('content-range'), 'bytes */10');
+  assert.equal(await unsatisfiable.text(), '');
+
+  const whole = await handle('bytes=0-1,3-4');
+  assert.equal(whole.status, 200);
+  assert.equal(await whole.text(), '0123456789');
+  assert.equal(wholeFileRead.mock.callCount(), 0);
 });

@@ -13,7 +13,7 @@
 ```sh
 git clone https://github.com/xzc585/dsh-pet-mido.git
 cd dsh-pet-mido/dsh-pet
-npm install
+npm ci
 npm run build
 dsh plugin --profile desktop add file:"$(pwd)"
 ```
@@ -23,7 +23,7 @@ Windows（PowerShell）示例：
 ```powershell
 git clone https://github.com/xzc585/dsh-pet-mido.git
 cd dsh-pet-mido\dsh-pet
-npm install
+npm ci
 npm run build
 dsh plugin --profile desktop add file:C:\path\to\dsh-pet-mido\dsh-pet
 ```
@@ -36,7 +36,7 @@ dsh plugin --profile desktop add file:C:\path\to\dsh-pet-mido\dsh-pet
 
 ## 独立入口（不必先开 DSH）
 
-也可以双击桌面上的 **`mido.exe`**，不启动 DeepSeek Harness 就把米豆放到桌面上。右键米豆可以打开设置（含系统内存清理）。
+Windows 可以解压发行 ZIP，双击解包目录中的 **`dsh-pet.exe`**。已有构建好的插件和 Electron 时，也可用轻量入口 **`mido.exe`**。独立模式支持动画和系统内存清理，填写模型服务后也能聊天。
 
 当你随后打开 DeepSeek Harness（desktop 配置）时，**同一只**米豆会自动连上宿主，使用聊天、任务状态和配图等能力，而不会再出现第二只宠物。连不上时，右键或托盘里选「连接 DeepSeek Harness」，设置页「配置」里也有同一张卡。失败会给出中文说明。
 
@@ -60,7 +60,7 @@ dsh plugin --profile desktop add file:C:\path\to\dsh-pet-mido\dsh-pet
 
 ## 对话配图
 
-米豆的对话配图 / 表情包尚未收录。因此设置或菜单里的「纳入对话的配图」现在可能是空的。这不是安装失败。上游「大肥鱼」那套表情包默认也不附带在本仓库中。
+米豆内置 18 张对话配图。首次运行会把配图复制到米豆的用户素材目录。可以在宠物设置里选择对话是否配图。
 
 ## 系统内存清理（Windows）
 
@@ -116,7 +116,7 @@ python3 dsh-pet/scripts/generate-dog-pet.py
 ├── README.md  INSTALL.md  FEATURES.md  CONFIG.md  API.md  CORDIS.md  NOTICE.md  LICENSE
 ├── prompts/           # 动画生成提示词
 ├── tools/             # 开发工具，以及 mido-ram-cleaner（系统内存清理）
-├── dsh-pet/           # 插件本体（在此目录 npm install && npm run build）
+├── dsh-pet/           # 插件本体（在此目录 npm ci && npm run build）
 │   ├── src/
 │   ├── lib/            # 构建产物（不入库，需 npm run build）
 │   ├── runtime/        # 桌面模式运行壳

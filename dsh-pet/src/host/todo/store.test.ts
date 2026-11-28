@@ -3,7 +3,7 @@
  *   ① 建 / 改 / 删 / 记提醒 的语义，尤其是「改期限与重新打开会重置提醒排期」；
  *   ② 磁盘是唯一真相：换一个新实例仍能读回同一条待办，且文件带版本号；
  *   ③ 所有操作串行：并发创建不丢记录、id 不重复；
- *   ④ 坏文件不炸：解析失败按空清单继续并留告警，下一次写入自然覆盖。
+ *   ④ 损坏的文件保留在磁盘上，修复后可以重试。
  *
  * 跑法：node --experimental-strip-types --test src/host/todo/store.test.ts
  */
@@ -150,15 +150,17 @@ describe('TodoStore —— 排序与并发', () => {
 });
 
 describe('TodoStore —— 坏文件', () => {
-  test('JSON 坏掉时按空清单继续，并留一条告警', async () => {
-    writeFileSync(file, '{ not json', 'utf8');
+  test('JSON 损坏时保留原文件，修复后可在同一实例重试', async () => {
+    const damaged = '{ not json';
+    writeFileSync(file, damaged, 'utf8');
     const store = makeStore();
-    assert.deepEqual(await store.list(), []);
+    await assert.rejects(store.list());
+    await assert.rejects(store.create({ text: '应保留原文件', dueAt: null }));
+    assert.equal(readFileSync(file, 'utf8'), damaged);
     assert.ok(warnings.some((line) => line.includes('解析失败')));
-    // 下一次写入自然覆盖：不再有坏文件
+    writeFileSync(file, JSON.stringify({ version: TODO_FILE_VERSION, todos: [] }));
     await store.create({ text: '恢复', dueAt: null });
     assert.equal((await store.list()).length, 1);
-    assert.doesNotThrow(() => JSON.parse(readFileSync(file, 'utf8')));
   });
 
   test('字段非法的条目被整条丢弃，合法条目保留', async () => {

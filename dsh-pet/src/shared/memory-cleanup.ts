@@ -93,6 +93,16 @@ export function readMemoryCleanup(value: unknown): MemoryCleanupConfig {
   };
 }
 
+/** 只有开启并过了防抖窗口，自动巡检才测量进程和缓存。 */
+export function canCheckMemoryCleanup({
+  enabled,
+  debounceSec,
+  lastRunAt,
+  now,
+}: Pick<CleanupDecisionInput, 'enabled' | 'debounceSec' | 'lastRunAt' | 'now'>): boolean {
+  return enabled && (lastRunAt === null || now - lastRunAt >= debounceSec * 1000);
+}
+
 /**
  * 决定这一拍要不要清理。
  *
@@ -104,11 +114,7 @@ export function readMemoryCleanup(value: unknown): MemoryCleanupConfig {
  */
 export function decideMemoryCleanup(input: CleanupDecisionInput): CleanupDecision {
   if (input.force === true) return { run: true, reason: 'manual' };
-  if (!input.enabled) return { run: false, reason: null };
-  const debounceMs = input.debounceSec * 1000;
-  if (input.lastRunAt !== null && input.now - input.lastRunAt < debounceMs) {
-    return { run: false, reason: null };
-  }
+  if (!canCheckMemoryCleanup(input)) return { run: false, reason: null };
   const thresholdBytes = input.thresholdMb * MB;
   if (input.processBytes >= thresholdBytes || input.cacheBytes >= thresholdBytes) {
     return { run: true, reason: 'threshold' };

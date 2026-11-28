@@ -54,11 +54,12 @@ async function withService(
   }
 }
 
-/** 轮询直到条件成立；用 setImmediate 推进，不依赖固定睡眠时长。 */
+/** 让出事件循环给磁盘读写，按实际时间限等待，避免 CI 按轮次耗尽。 */
 async function waitFor(check: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+  const deadline = Date.now() + 2000;
+  while (Date.now() < deadline) {
     if (check()) return;
-    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 5));
   }
   assert.fail('等待条件超时');
 }

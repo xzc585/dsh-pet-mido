@@ -318,34 +318,42 @@ export const ja: Record<Key, string> = {
   'motion.action': 'ランダムアクション',
   // キャッシュ整理（プラグインのキャッシュであり、システムメモリではない）
   cleanupTitle: 'キャッシュの整理',
-  cleanupHint: 'このデスクトップペットのアニメーションキャッシュ、バックグラウンドの動画デコーダ、音声キャッシュを解放します。システムのメモリは掃除しません。会話履歴や長期記憶も削除しません。パソコン全体のメモリを回収するには、上の「システムメモリの整理」を使ってください。定期間隔と使用量のしきい値の、先に達した方が実行されます。連続実行を防ぐ最短間隔があります。スイッチを切っても「今すぐ整理」は使えます。',
+  cleanupHint:
+    'このデスクトップペットのアニメーションキャッシュ、バックグラウンドの動画デコーダ、音声キャッシュを解放します。システムのメモリは掃除しません。会話履歴や長期記憶も削除しません。パソコン全体のメモリを回収するには、上の「システムメモリの整理」を使ってください。定期間隔と使用量のしきい値の、先に達した方が実行されます。連続実行を防ぐ最短間隔があります。スイッチを切っても「今すぐ整理」は使えます。',
   cleanupEnabled: '定期整理を有効にする',
   cleanupEnabledHint: 'オフにすると定期実行としきい値は動きません。「今すぐ整理」は使えます。',
   cleanupIntervalLabel: '定期間隔（秒）',
-  cleanupIntervalHint: '前回の整理、またはこのプロセスの起動から数えます。使用量が先にしきい値に達すれば、前倒しで整理します。',
+  cleanupIntervalHint:
+    '前回の整理、またはこのプロセスの起動から数えます。使用量が先にしきい値に達すれば、前倒しで整理します。',
   cleanupThresholdLabel: 'しきい値（MB）',
-  cleanupThresholdHint: 'プロセスのヒープ、またはこのプラグインのキャッシュ（音声ファイル / アニメーション）のいずれかがこの値に達すると前倒しで整理します。',
+  cleanupThresholdHint:
+    'プロセスのヒープ、またはこのプラグインのキャッシュ（音声ファイル / アニメーション）のいずれかがこの値に達すると前倒しで整理します。',
   cleanupDebounceLabel: '最短間隔（秒）',
-  cleanupDebounceHint: '自動整理どうしの最短間隔です。定期間隔以下にしてください。しきい値が出しっぱなしでも連打されません。',
+  cleanupDebounceHint:
+    '自動整理どうしの最短間隔です。定期間隔以下にしてください。しきい値が出しっぱなしでも連打されません。',
   cleanupNow: '今すぐ整理',
   cleanupDone: '整理しました。およそ {bytes} バイトを解放しました。',
   cleanupFailed: '整理に失敗しました。しばらくしてから再試行してください。',
   // システムメモリの整理（パソコン全体の RAM であり、プラグインのキャッシュではない）
   systemMemoryTitle: 'システムメモリの整理',
-  systemMemoryHint: '解放できる物理メモリを回収します。各プロセスのワーキングセットを縮小し、管理者として実行すればスタンバイリストも消せます。他のアプリを終了したり、会話履歴を削除したりはしません。下の「キャッシュの整理」とは別です。変更はすぐに反映され、ページ下部の「保存」を押す必要はありません。',
+  systemMemoryHint:
+    '解放できる物理メモリを回収します。各プロセスのワーキングセットを縮小し、管理者として実行すればスタンバイリストも消せます。他のアプリを終了したり、会話履歴を削除したりはしません。下の「キャッシュの整理」とは別です。変更はすぐに反映され、ページ下部の「保存」を押す必要はありません。',
   systemMemoryUsage: '現在の使用量',
   systemMemoryUsageValue: '使用中 {percent}%（{used} / {total}、利用可能 {avail}）',
   systemMemoryAuto: '自動整理を有効にする',
   systemMemoryAutoHint: '切ると定時やしきい値による自動整理は行いません。「今すぐ整理」は使えます。',
   systemMemoryIntervalLabel: '間隔（秒）',
-  systemMemoryIntervalHint: '前回の整理、またはヘルパー起動時から数えます。使用量が先にしきい値に達すれば早めに実行します。30 から 86400 秒の間である必要があります。',
+  systemMemoryIntervalHint:
+    '前回の整理、またはヘルパー起動時から数えます。使用量が先にしきい値に達すれば早めに実行します。30 から 86400 秒の間である必要があります。',
   systemMemoryThresholdLabel: '使用量のしきい値（%）',
-  systemMemoryThresholdHint: '使用中の物理メモリがこの割合に達すると早めに整理します。50% から 99% の間である必要があります。',
+  systemMemoryThresholdHint:
+    '使用中の物理メモリがこの割合に達すると早めに整理します。50% から 99% の間である必要があります。',
   systemMemoryDebounceLabel: '最短間隔（秒）',
   systemMemoryDebounceHint: '自動整理の最短間隔です。10 秒以上、かつ間隔を超えてはいけません。',
   systemMemoryNow: '今すぐ整理',
   systemMemoryElevated: '管理者として完全に一度整理する',
-  systemMemoryElevatedHint: 'Windows が許可を求めます。拒否しても「今すぐ整理」で権限のあるワーキングセットは縮小できます。',
+  systemMemoryElevatedHint:
+    'Windows が許可を求めます。拒否しても「今すぐ整理」で権限のあるワーキングセットは縮小できます。',
   systemMemoryLastClean: '前回の整理：使用量が {before} から {after} になりました。',
   systemMemoryLastCleanAdmin: '前回の整理：使用量が {before} から {after} になりました（スタンバイリストを含む）。',
   systemMemoryUnavailable: 'システムメモリのヘルパーに、今は接続できません。',

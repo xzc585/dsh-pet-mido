@@ -86,10 +86,10 @@ describe('decideMemoryCleanup', () => {
   });
 
   test('关掉之后定时和阈值都不跑', () => {
-    assert.deepEqual(
-      decideMemoryCleanup(input({ enabled: false, now: 9_999_999, processBytes: 9999 * MB })),
-      { run: false, reason: null },
-    );
+    assert.deepEqual(decideMemoryCleanup(input({ enabled: false, now: 9_999_999, processBytes: 9999 * MB })), {
+      run: false,
+      reason: null,
+    });
   });
 
   test('手动触发无视开关、间隔和防抖', () => {

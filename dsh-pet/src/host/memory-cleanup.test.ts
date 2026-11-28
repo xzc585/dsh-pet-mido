@@ -9,7 +9,12 @@ import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { tickHostMemoryCleanup, triggerHostMemoryCleanup, voiceCacheBytes, resetMemoryCleanupClock } from './memory-cleanup.ts';
+import {
+  tickHostMemoryCleanup,
+  triggerHostMemoryCleanup,
+  voiceCacheBytes,
+  resetMemoryCleanupClock,
+} from './memory-cleanup.ts';
 import { PollStateStore } from './state.ts';
 import type { ConfigPaths } from './config.ts';
 import type { MemoryCleanupDeps } from './memory-cleanup.ts';
@@ -51,6 +56,7 @@ describe('voiceCacheBytes', () => {
     await mkdir(dir);
     await writeFile(join(dir, 'a.mp3'), Buffer.alloc(10));
     await writeFile(join(dir, 'b.wav'), Buffer.alloc(5));
+    await mkdir(join(dir, 'not-a-file.mp3'));
     await writeFile(join(dir, 'note.txt'), Buffer.alloc(100));
     assert.equal(await voiceCacheBytes(dir), 15);
   });
@@ -83,7 +89,10 @@ describe('tickHostMemoryCleanup', () => {
     assert.equal(await voiceCacheBytes(dir), 0);
     const leaf = store.read().sections.memoryCleanup;
     assert.equal(leaf.data && (leaf.data as { generation: number }).generation, 1);
-    assert.equal(logs.some((line) => line.includes('reason=manual')), true);
+    assert.equal(
+      logs.some((line) => line.includes('reason=manual')),
+      true,
+    );
   });
 
   test('没有配置文件时巡检不抛，用量低于默认阈值则不清理', async () => {
@@ -91,5 +100,35 @@ describe('tickHostMemoryCleanup', () => {
     const harness = deps(root, {});
     const report = await tickHostMemoryCleanup(harness, 1_000);
     assert.equal(report, null);
+  });
+
+  test('禁止自动清理时不量内存，仍可手动清理', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-pet-cleanup-'));
+    const harness = deps(root, {});
+    await writeFile(
+      harness.configPaths.defaultFile,
+      JSON.stringify({ memoryCleanup: { enabled: false, intervalSec: 30, thresholdMb: 1, debounceSec: 1 } }),
+    );
+    const memoryUsage = t.mock.method(process, 'memoryUsage');
+    assert.equal(await tickHostMemoryCleanup(harness, 1_000), null);
+    assert.equal(memoryUsage.mock.callCount(), 0);
+    assert.equal((await triggerHostMemoryCleanup(harness)).reason, 'manual');
+    assert.equal(memoryUsage.mock.callCount(), 1);
+  });
+
+  test('同时清理时同一音频只计入一次释放量', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-pet-cleanup-'));
+    const dir = join(root, 'voice-cache');
+    await mkdir(dir);
+    await writeFile(join(dir, 'a.mp3'), Buffer.alloc(32));
+    const harness = deps(root, {});
+
+    const reports = await Promise.all([triggerHostMemoryCleanup(harness), triggerHostMemoryCleanup(harness)]);
+
+    assert.equal(
+      reports.reduce((total, report) => total + report.freedBytes, 0),
+      32,
+    );
+    assert.equal(await voiceCacheBytes(dir), 0);
   });
 });

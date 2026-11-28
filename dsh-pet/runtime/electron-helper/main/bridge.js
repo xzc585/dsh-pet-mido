@@ -8,7 +8,44 @@
  */
 
 const fsPromises = require('node:fs/promises');
+const { Readable } = require('node:stream');
 const { parseRange } = require('../range.js');
+
+/** 按需读取区间，限制缓冲大小并支持取消。 */
+async function streamBridgeFile(request, resp, baseHeaders) {
+  const file = await fsPromises.open(resp.file, 'r');
+  let stream;
+  try {
+    const info = await file.stat();
+    if (!info.isFile()) throw new Error('asset is not a regular file');
+    const total = info.size;
+    const range = parseRange(request.headers.get('range'), total);
+    const headers = { ...baseHeaders, 'accept-ranges': 'bytes' };
+    if (range === 'unsatisfiable') {
+      headers['content-range'] = `bytes */${total}`;
+      return new Response(null, { status: 416, headers });
+    }
+
+    const start = range?.start ?? 0;
+    const end = range?.end ?? total - 1;
+    const status = range ? 206 : resp.status || 200;
+    headers['content-length'] = String(end - start + 1);
+    if (range) headers['content-range'] = `bytes ${start}-${end}/${total}`;
+    if (total === 0) return new Response(null, { status, headers });
+
+    stream = file.createReadStream({ start, end, signal: request.signal });
+    const body = Readable.toWeb(stream, {
+      strategy: { highWaterMark: stream.readableHighWaterMark, size: (chunk) => chunk.byteLength },
+    });
+    return new Response(body, { status, headers });
+  } catch (error) {
+    stream?.destroy();
+    throw error;
+  } finally {
+    // 流负责在读完或取消时关闭句柄；未建流的响应由这里关闭。
+    if (!stream) await file.close();
+  }
+}
 
 /**
  * 造 bridge 通道。
@@ -19,6 +56,7 @@ const { parseRange } = require('../range.js');
  * @param deps.token - 独立应用的访问凭据（只进请求头）。
  */
 function createBridge({ isBridge, prefix, origin, token }) {
+  let httpTarget = { origin, token };
   let bridgeSeq = 0;
   /** id -> {resolve, reject}：一个请求对应宿主的一次回调应答 */
   const bridgePending = new Map();
@@ -98,33 +136,9 @@ function createBridge({ isBridge, prefix, origin, token }) {
     const headers = { 'access-control-allow-origin': '*' }; // 渲染端页面是 file:// 源，scheme 跨源需 CORS
     if (resp.contentType) headers['content-type'] = resp.contentType;
     if (resp.file) {
-      // 素材：直接读盘返回（宿主已解析好绝对路径）。视频会中途按 `Range: bytes=N-` 补数据，
-      // 回整份会让播放器把整份当后半段拼，解到错位处提前 ended（动作被截断）。
+      // 视频会用 Range 补读，区间响应只从磁盘读取播放器需要的部分。
       try {
-        const data = await fsPromises.readFile(resp.file);
-        const decision = parseRange(request.headers.get('range'), data.length);
-        if (decision === 'unsatisfiable') {
-          return new Response(null, {
-            status: 416,
-            headers: { ...headers, 'content-range': `bytes */${data.length}`, 'accept-ranges': 'bytes' },
-          });
-        }
-        if (decision !== null) {
-          const slice = data.subarray(decision.start, decision.end + 1);
-          return new Response(new Uint8Array(slice), {
-            status: 206,
-            headers: {
-              ...headers,
-              'content-length': String(slice.length),
-              'content-range': `bytes ${decision.start}-${decision.end}/${data.length}`,
-              'accept-ranges': 'bytes',
-            },
-          });
-        }
-        return new Response(new Uint8Array(data), {
-          status: resp.status || 200,
-          headers: { ...headers, 'content-length': String(data.length), 'accept-ranges': 'bytes' },
-        });
+        return await streamBridgeFile(request, resp, headers);
       } catch (e) {
         console.error('[dsh-pet-desktop-helper] bridge file read failed:', resp.file, e);
         return new Response('dsh-pet: asset read failed', { status: 500, headers });
@@ -136,11 +150,13 @@ function createBridge({ isBridge, prefix, origin, token }) {
   /** 与宿主 handlePetRoute 通信：bridge 模式走管道，手动 start-desktop 流退回 HTTP 直连 */
   async function hostRequest(method, url, body) {
     if (isBridge) return bridgeRequest(method, url, body);
-    const resp = await fetch(origin + url, {
+    const target = httpTarget;
+    const resp = await fetch(target.origin + url, {
       method,
+      signal: AbortSignal.timeout(5000),
       headers: {
         ...(body ? { 'content-type': 'application/json' } : {}),
-        ...(token ? { 'X-DSH-Pet-Token': token } : {}),
+        ...(target.token ? { 'X-DSH-Pet-Token': target.token } : {}),
       },
       body,
     });
@@ -149,6 +165,9 @@ function createBridge({ isBridge, prefix, origin, token }) {
 
   return {
     hostRequest,
+    setHost: (target) => {
+      httpTarget = target;
+    },
     handle: handleBridgeRequest,
     startCallback: startBridgeCallback,
     callbackUrl: () => bridgeCallbackUrl,

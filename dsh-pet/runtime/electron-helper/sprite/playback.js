@@ -10,30 +10,20 @@
 Object.assign(PetSprite.prototype, {
   switchTo(next, nextOnce, playbackId, url) {
     if (!next) return;
-    // 「当前在播哪一段」只在这里写：ended 分流、回空闲补丁、随机链避重都读它。
-    // 交给调用方维护时 switchTo(x, false) 会留下过期值，events.js 判「是不是工作动画」就永远不成立。
-    this.anim = next;
-    this.once = !nextOnce;
     const pending = this.pending;
-    if (pending && pending.anim === next && pending.once === nextOnce) {
+    if (pending && pending.anim === next && pending.once === nextOnce && pending.playbackId === playbackId) {
       // 防重命中（单动画点击时目标=当前动画，不重播）：仍消费 Q 弹标记，压当前前台视频，
       // 保证「点击唯一动画」时挤压反馈不丢（与浏览器同构）。
       if (this.pendingSquash) {
         this.pendingSquash = false;
         this.startSquash(this.front === 0 ? this.videoA : this.videoB);
       }
-      // 这次点播的目标本来就在播（没换源但确实在播）→ 如实回 playing，否则调用方只能干等 timeout
-      if (playbackId) {
-        this.playback = playbackId;
-        this.reportPlayback(playbackId, 'playing');
-      }
       return;
     }
-    const gen = ++this.gen;
-    this.pending = { anim: next, once: nextOnce, gen };
-    const target = this.front === 0 ? this.videoB : this.videoA;
-    const el = target;
+    this.cancelPendingSwitch('superseded');
+    const el = this.front === 0 ? this.videoB : this.videoA;
     if (!el) return;
+    const gen = ++this.gen;
     // 素材地址两条路：url 形态直接用第三方给的完整地址（宿主已把 scheme 卡在 http/https，
     // 不经 bridge、也不拼 BASE）；name 形态按「素材根 + 名字」拼。
     el.src = url || this.assetBase + encodeURIComponent(next) + (S.ANIMATION_EXT || '.webm');
@@ -41,30 +31,30 @@ Object.assign(PetSprite.prototype, {
     el.muted = true;
     el.autoplay = true;
     el.playsInline = true;
-    el.onended = nextOnce ? () => this.handleEnded() : () => this.restartLoop(el);
+    el.onended = () => {
+      if (el !== (this.front === 0 ? this.videoA : this.videoB)) return;
+      if (nextOnce) this.handleEnded();
+      else this.restartLoop(el);
+    };
     // 加载兜底（同浏览器端 10s 超时）：素材加载失败或卡住时必须释放 pending，否则它永久挂起——
     // 相同目标会被防重分支吞掉、不同目标靠 gen 覆盖，表现就是「点了没反应」。
     const loadGuard = (why) => {
-      if (!this.pending || this.pending.gen !== gen) return;
-      this.pending = null;
+      if (this.pending?.gen !== gen) return;
+      const frontEnded = this.pending.frontEnded;
+      cleanup();
+      stopBack();
       console.warn('[dsh-pet] 素材加载失败 pet=' + this.pet.id + ' anim=' + next + '：' + why + '（已释放本次切换）');
       // 播放回执：这一段没能播起来 → 如实回 failed（而不是让调用方干等到 timeout）
       if (playbackId) {
         if (this.playback === playbackId) this.playback = null;
         this.reportPlayback(playbackId, 'failed', why === 'video error' ? 'decode-error' : 'asset-load');
       }
+      if (frontEnded) this.handleEnded();
     };
-    const loadTimer = window.setTimeout(() => loadGuard('10s 超时'), 10000);
-    el.onerror = () => {
-      window.clearTimeout(loadTimer);
-      loadGuard('video error');
-    };
-    el.load();
     const onReady = () => {
-      el.removeEventListener('loadeddata', onReady);
-      window.clearTimeout(loadTimer);
-      el.onerror = null;
-      if (this.pending && this.pending.gen !== gen) return;
+      if (this.pending?.gen !== gen) return;
+      const frontEnded = this.pending.frontEnded;
+      cleanup();
       const old = this.front === 0 ? this.videoA : this.videoB;
       el.classList.add('is-front');
       if (old && old !== el) {
@@ -78,19 +68,23 @@ Object.assign(PetSprite.prototype, {
         }
       }
       this.front = this.front === 0 ? 1 : 0;
-      this.pending = null;
+      this.anim = next;
+      this.once = !nextOnce;
       this.playback = playbackId || null;
       el.style.transform = this.facing === 'right' ? 'scaleX(-1)' : '';
       el.play()
         .then(() => {
           // 只有 play() 兑现才代表确实开始出画（loadeddata 只代表可解码）
-          if (playbackId) this.reportPlayback(playbackId, 'playing');
+          if (playbackId && this.playback === playbackId && this.gen === gen)
+            this.reportPlayback(playbackId, 'playing');
         })
         .catch(() => {
-          // 自动播放被拒 / 元素不可播：如实回 failed，不改播放控制
-          if (!playbackId) return;
-          if (this.playback === playbackId) this.playback = null;
-          this.reportPlayback(playbackId, 'failed', 'play-rejected');
+          if (this.gen !== gen) return;
+          if (playbackId && this.playback === playbackId) {
+            this.playback = null;
+            this.reportPlayback(playbackId, 'failed', 'play-rejected');
+          }
+          if (frontEnded) this.handleEnded();
         });
       // 点击 Q 弹：等新动画就位后才压（压的是新点击动画的首帧，与浏览器一致）
       if (this.pendingSquash) {
@@ -99,8 +93,31 @@ Object.assign(PetSprite.prototype, {
       }
       if (this.pendingMove) this.startMoveDrive(el);
     };
+    const cleanup = () => {
+      this.pending = null;
+      window.clearTimeout(loadTimer);
+      el.removeEventListener('loadeddata', onReady);
+      el.onerror = null;
+    };
+    const stopBack = () => {
+      el.onended = null;
+      el.autoplay = false;
+      el.pause();
+    };
+    const loadTimer = window.setTimeout(() => loadGuard('10s 超时'), 10000);
+    this.pending = { anim: next, once: nextOnce, gen, playbackId, cleanup, stopBack, frontEnded: pending?.frontEnded };
+    el.onerror = () => loadGuard('video error');
     el.addEventListener('loadeddata', onReady);
+    el.load();
     if (el.readyState >= 2) onReady();
+  },
+
+  cancelPendingSwitch(reason) {
+    const pending = this.pending;
+    if (!pending) return;
+    pending.cleanup();
+    pending.stopBack();
+    if (pending.playbackId) this.reportPlayback(pending.playbackId, 'cancelled', reason);
   },
 
   /**
@@ -140,6 +157,7 @@ Object.assign(PetSprite.prototype, {
     const el = this.front === 0 ? this.videoA : this.videoB;
     const stamp = '[dsh-pet] ' + new Date().toTimeString().slice(0, 8) + ' pet=' + this.pet.id;
     if (next) {
+      this.cancelPendingSwitch('frozen');
       // 停住正在播的那一段：宿主停不掉一段视频，完全静止只能由渲染端执行；只堵随机链入口不够，
       // 那个入口要等动画播完才被调用。
       this.stopMove();
@@ -292,6 +310,11 @@ Object.assign(PetSprite.prototype, {
       const done = this.playback;
       this.playback = null; // 先清再上报：后续链式换源不该把它当成「被打断」
       this.reportPlayback(done, 'ended');
+    }
+    // 有新动画加载时，先留住这次切换。只有切换失败才继续旧动画的收尾链。
+    if (this.pending) {
+      this.pending.frontEnded = true;
+      return;
     }
     // 睡觉：动画链的推进归睡觉状态机（start 播完 → loop；end 播完 → 清态回随机链）。
     // 放在拖拽守卫之前：睡着时拖拽不换动画、睡姿照播，start 播完必须照常切 loop，否则松手就停在末帧。
