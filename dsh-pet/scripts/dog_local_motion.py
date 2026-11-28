@@ -116,16 +116,6 @@ def idle(bank, t, *, shadow):
     return shadow(motion.draw(),0)
 
 
-def turn(bank, t, *, shadow):
-    aim = lambda k: -pulse(k,0.025,0.24,0.35,0.53)+pulse(k,0.43,0.69,0.79,0.98)
-    yaw = aim(t)
-    motion = PoseMotion(bank.plate("sit"))
-    seated_head(motion, yaw=yaw, tilt=2.9*yaw, nod=2.4*abs(yaw),
-                ears=3.2*(yaw-aim(t-0.036)), yaw_shift=(13, 8))
-    return shadow(motion.draw(),0)
-
-
-
 def whisper_tilt(bank, t, *, shadow):
     lean = pulse(t,0.025,0.26,0.72,0.96)
     mumble = pulse(t,0.23,0.29,0.32,0.40)+0.7*pulse(t,0.50,0.56,0.60,0.69)

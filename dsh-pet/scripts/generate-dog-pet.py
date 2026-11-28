@@ -28,6 +28,7 @@ import dog_gait_motion
 import dog_local_motion
 import dog_sleep_motion
 import dog_stretch_motion
+import dog_turn_motion
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = Path(__file__).resolve().parent / "dog-source"
@@ -38,7 +39,6 @@ FPS = 12
 # 只提高通过对照的循环片段帧率，同时取消片尾重复的起始帧。
 LOCAL_MOTIONS = {
     "待机呼吸": dog_local_motion.idle,
-    "转转头": dog_local_motion.turn,
     "碎碎念-歪头咕哝": dog_local_motion.whisper_tilt,
     "碎碎念-摇尾说话": dog_local_motion.whisper_talk,
     "工作状态-歪头思索": dog_local_motion.think,
@@ -59,9 +59,10 @@ BALANCE_MOTIONS = {
 }
 DIG_MOTIONS = {"刨一刨", "工作状态-刨地忙碌"}
 STRETCH_MOTION = "伸懒腰"
+TURN_MOTION = "转转头"
 SMOOTH_LOOP_RATES = dict.fromkeys(
     (*LOCAL_MOTIONS, *GAIT_MOTIONS, *BODY_MOTIONS, *BALANCE_MOTIONS, *DIG_MOTIONS,
-     *SLEEP_TRANSITIONS, STRETCH_MOTION, "摇尾巴", "坐下歪头"), 24
+     *SLEEP_TRANSITIONS, STRETCH_MOTION, TURN_MOTION, "摇尾巴", "坐下歪头"), 24
 )
 MOTION_MASTERS = SOURCE / "motion-masters"
 GROUND = int(H * 0.88)
@@ -93,7 +94,7 @@ def _is_cream(r: np.ndarray, g: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 
 def restore_reference_edge_color(image: np.ndarray) -> None:
-    """Remove dark background color from the seated source's exterior fur."""
+    """Remove dark background color from the pose's exterior fur."""
     import cv2
 
     alpha = image[..., 3].astype(np.float32) / 255
@@ -247,7 +248,12 @@ def load_pose(path: Path) -> Image.Image:
         a = np.array(im)
         if (a[..., 3] == 0).mean() > 0.2:
             return clean_reference_alpha(im)
-    return key_dark_background(im, keep_low_nose=path.stem in ("mido-dig", "mido-sniff"))
+    keyed = key_dark_background(im, keep_low_nose=path.stem in ("mido-dig", "mido-sniff"))
+    if path.stem in ("mido-look-left", "mido-look-right"):
+        pixels = np.array(keyed)
+        restore_reference_edge_color(pixels)
+        return Image.fromarray(pixels)
+    return keyed
 
 
 def crop_transparent(im: Image.Image, pad: int = 8) -> Image.Image:
@@ -519,7 +525,7 @@ def anim_spin(bank: PoseBank, t: float) -> Image.Image:
 
 ANIMATIONS: list[tuple[str, float, bool, object]] = [
     ("待机呼吸", 2.0, True, partial(LOCAL_MOTIONS["待机呼吸"], shadow=add_shadow)),
-    ("转转头", 32 / FPS, True, partial(LOCAL_MOTIONS["转转头"], shadow=add_shadow)),
+    (TURN_MOTION, 32 / FPS, True, None),
     ("被抱起", 25 / FPS, True, partial(dog_body_motion.held, shadow=add_shadow, affine=affine_about)),
     ("点击回应-摇尾欢跳", 25 / FPS, True, partial(dog_gait_motion.jump_frame, shadow=add_shadow)),
     ("小步跑", 25 / FPS, True, partial(dog_gait_motion.run_frame, shadow=add_shadow)),
@@ -662,6 +668,8 @@ def main() -> None:
         rate = SMOOTH_LOOP_RATES.get(name, FPS)
         if name in DIG_MOTIONS:
             frames = dig_frames
+        elif name == TURN_MOTION:
+            frames = dog_turn_motion.render_turn(bank, shadow=add_shadow)
         elif name == STRETCH_MOTION:
             frames = dog_stretch_motion.render_stretch(bank, MOTION_MASTERS, shadow=add_shadow)
         elif name in SLEEP_TRANSITIONS:
@@ -686,7 +694,7 @@ def main() -> None:
             crf = 26
         elif name in BALANCE_MOTIONS:
             crf = 28
-        elif name in LOCAL_MOTIONS or name in BODY_MOTIONS or name in SLEEP_TRANSITIONS or name == "坐下歪头":
+        elif name == TURN_MOTION or name in LOCAL_MOTIONS or name in BODY_MOTIONS or name in SLEEP_TRANSITIONS or name == "坐下歪头":
             crf = 27
         encode_webm(frames, dest, rate, crf=crf, cpu_used=4 if name in GAIT_MOTIONS or name == STRETCH_MOTION else 3,
                     sleep_seam=name == "睡觉-循环" or name in SLEEP_TRANSITIONS)

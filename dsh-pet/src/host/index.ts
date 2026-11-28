@@ -67,7 +67,7 @@ export function apply(ctx: any): void {
     EXTERNAL_WORK_SESSION,
     nextExternalWorkSeq,
   } = setup;
-  // 把包内附带的宠物种类（如米豆）写入用户 pet/；已有文件一律不覆盖。
+  // 初始化内置宠物种类，补齐缺失素材并升级可识别的旧版内置素材。
   try {
     const seeded = seedBundledPetPacks(petConfigDir);
     if (seeded.length) log.info('[dsh-pet] 已写入内置宠物种类：' + seeded.join('、'));

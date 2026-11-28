@@ -1,12 +1,24 @@
 /**
- * 内置宠物种类写入用户 pet/ 的契约：缺了才拷，已有的配置/动画/表情包目录不覆盖；
+ * 内置宠物种类写入用户 pet/ 的契约：补齐缺失素材，按哈希更新指定旧版素材，保留用户文件；
  * 已有配置但缺少 `<kind>-memes/` 时仍补拷；已有配置没有 `memes` 键时只合并该字段。
  *
  * 跑法：node --experimental-strip-types --test src/host/pet-pack-seed.test.ts
  */
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -39,6 +51,12 @@ function existsAnim(dest: string): boolean {
     return false;
   }
 }
+
+const LEGACY_TURN = 'old stock clip';
+const LEGACY_TURN_DIGESTS = new Map([
+  [BigInt(Buffer.byteLength(LEGACY_TURN)), createHash('sha256').update(LEGACY_TURN).digest('hex')],
+]);
+const TURN_FILE = '转转头.webm';
 
 describe('seedBundledPetPacks', () => {
   test('包内目录在 assets/pet-packs（包根或上一级）', () => {
@@ -122,6 +140,108 @@ describe('seedBundledPetPacks', () => {
       assert.deepEqual(seedBundledPetPacks(dest, bundle), []);
       assert.equal(readFileSync(join(existing, '待机呼吸.webm'), 'utf8'), 'webm');
       assert.equal(readFileSync(join(existing, '点击.webm'), 'utf8'), 'custom click');
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+    }
+  });
+
+  test('只更新已识别的旧版米豆转转头动画，保留用户素材与初始化结果', () => {
+    const parent = mkdtempSync(join(tmpdir(), 'dsh-pet-seed-turn-'));
+    try {
+      const bundle = join(parent, 'bundle');
+      const next = 'new stock clip';
+      const config = '{"name":"mine","memes":{}}\n';
+      makeBundle(bundle, 'dog', '{"name":"new"}');
+      writeFileSync(join(bundle, 'dog', 'dog-animation', TURN_FILE), next);
+      writeFileSync(join(bundle, 'dog', 'dog-animation', '另一个动作.webm'), 'new other clip');
+      for (const [name, existing, expected] of [
+        ['legacy', LEGACY_TURN, next],
+        ['custom', 'user edit clip', 'user edit clip'],
+        ['current', next, next],
+        ['missing', undefined, next],
+      ] as const) {
+        const dest = join(parent, name);
+        const anim = join(dest, 'dog-animation');
+        const turn = join(anim, TURN_FILE);
+        mkdirSync(anim, { recursive: true });
+        writeFileSync(join(dest, 'dog-config.json'), config);
+        writeFileSync(join(anim, '另一个动作.webm'), LEGACY_TURN);
+        if (existing !== undefined) {
+          writeFileSync(turn, existing);
+          utimesSync(turn, 1, 1);
+        }
+        const before = lstatSync(turn, { throwIfNoEntry: false })?.mtimeMs;
+        assert.deepEqual(seedBundledPetPacks(dest, bundle, LEGACY_TURN_DIGESTS), []);
+        assert.equal(readFileSync(turn, 'utf8'), expected);
+        assert.equal(readFileSync(join(dest, 'dog-config.json'), 'utf8'), config);
+        assert.equal(readFileSync(join(anim, '另一个动作.webm'), 'utf8'), LEGACY_TURN);
+        assert.equal(readFileSync(join(anim, '待机呼吸.webm'), 'utf8'), 'webm');
+        if (before !== undefined && existing === expected) assert.equal(lstatSync(turn).mtimeMs, before);
+        const after = lstatSync(turn).mtimeMs;
+        assert.deepEqual(seedBundledPetPacks(dest, bundle, LEGACY_TURN_DIGESTS), []);
+        assert.equal(lstatSync(turn).mtimeMs, after);
+        assert.ok(readdirSync(anim).every((file) => !file.endsWith('.tmp')));
+      }
+      assert.deepEqual(seedBundledPetPacks(join(parent, 'new'), bundle, LEGACY_TURN_DIGESTS), ['dog']);
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+    }
+  });
+
+  test('包内缺少合法的新版转转头时保留旧版', () => {
+    const parent = mkdtempSync(join(tmpdir(), 'dsh-pet-seed-turn-missing-'));
+    try {
+      const bundle = join(parent, 'bundle');
+      const dest = join(parent, 'pet');
+      makeBundle(bundle, 'dog', '{"name":"new"}');
+      const anim = join(dest, 'dog-animation');
+      mkdirSync(anim, { recursive: true });
+      const turn = join(anim, TURN_FILE);
+      writeFileSync(turn, LEGACY_TURN);
+      assert.deepEqual(seedBundledPetPacks(dest, bundle, LEGACY_TURN_DIGESTS), ['dog']);
+      assert.equal(readFileSync(turn, 'utf8'), LEGACY_TURN);
+      const invalid = join(bundle, 'dog', 'dog-animation', TURN_FILE);
+      writeFileSync(invalid, '');
+      assert.deepEqual(seedBundledPetPacks(dest, bundle, LEGACY_TURN_DIGESTS), []);
+      assert.equal(readFileSync(turn, 'utf8'), LEGACY_TURN);
+      rmSync(invalid);
+      mkdirSync(invalid);
+      assert.deepEqual(seedBundledPetPacks(dest, bundle, LEGACY_TURN_DIGESTS), []);
+      assert.equal(readFileSync(turn, 'utf8'), LEGACY_TURN);
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+    }
+  });
+
+  test('转转头迁移不会替换用户链接或采用包内链接', () => {
+    const parent = mkdtempSync(join(tmpdir(), 'dsh-pet-seed-turn-link-'));
+    try {
+      const bundle = join(parent, 'bundle');
+      const dest = join(parent, 'pet');
+      makeBundle(bundle, 'dog', '{"name":"new"}');
+      const anim = join(dest, 'dog-animation');
+      mkdirSync(anim, { recursive: true });
+      const installed = join(anim, TURN_FILE);
+      const packaged = join(bundle, 'dog', 'dog-animation', TURN_FILE);
+      const linked = join(parent, 'linked.webm');
+      // Windows 目录联接同样由 lstat 识别为链接，且不需要管理员权限。
+      const type = process.platform === 'win32' ? 'junction' : 'file';
+      if (type === 'junction') mkdirSync(linked);
+      const contents = type === 'junction' ? join(linked, 'original.webm') : linked;
+      writeFileSync(contents, LEGACY_TURN);
+      symlinkSync(linked, installed, type);
+      writeFileSync(packaged, 'new stock clip');
+      assert.deepEqual(seedBundledPetPacks(dest, bundle, LEGACY_TURN_DIGESTS), ['dog']);
+      assert.ok(lstatSync(installed).isSymbolicLink());
+      assert.equal(readFileSync(contents, 'utf8'), LEGACY_TURN);
+
+      rmSync(installed);
+      rmSync(packaged);
+      writeFileSync(installed, LEGACY_TURN);
+      writeFileSync(contents, 'new stock clip');
+      symlinkSync(linked, packaged, type);
+      assert.deepEqual(seedBundledPetPacks(dest, bundle, LEGACY_TURN_DIGESTS), []);
+      assert.equal(readFileSync(installed, 'utf8'), LEGACY_TURN);
     } finally {
       rmSync(parent, { recursive: true, force: true });
     }
