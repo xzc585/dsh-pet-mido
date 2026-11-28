@@ -47,6 +47,20 @@ describe('seedBundledPetPacks', () => {
     assert.match(found, /assets[\\/]pet-packs$/);
   });
 
+  test('打包版优先使用 app.asar 外的真实素材目录', () => {
+    const parent = mkdtempSync(join(tmpdir(), 'dsh-pet-seed-resources-'));
+    try {
+      const archive = join(parent, 'app.asar');
+      const embedded = join(archive, 'assets', 'pet-packs');
+      const external = join(parent, 'assets', 'pet-packs');
+      mkdirSync(embedded, { recursive: true });
+      mkdirSync(external, { recursive: true });
+      assert.equal(bundledPetPacksDir(archive), external);
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+    }
+  });
+
   test('目标没有该种类时拷贝配置、动画目录和参考图', () => {
     const parent = mkdtempSync(join(tmpdir(), 'dsh-pet-seed-'));
     try {
@@ -77,17 +91,37 @@ describe('seedBundledPetPacks', () => {
     }
   });
 
-  test('已有配置文件时不覆盖配置和动画，也不算新写入', () => {
+  test('首次复制中断留下配置时补齐缺失动画和立绘，保留原配置', () => {
     const parent = mkdtempSync(join(tmpdir(), 'dsh-pet-seed-'));
     try {
       const bundle = join(parent, 'bundle');
       const dest = join(parent, 'pet');
-      makeBundle(bundle, 'dog', '{"name":"new"}');
+      makeBundle(bundle, 'dog', '{"name":"new"}', { character: true });
       mkdirSync(dest, { recursive: true });
       writeFileSync(join(dest, 'dog-config.json'), '{"name":"mine"}');
       assert.deepEqual(seedBundledPetPacks(dest, bundle), []);
       assert.equal(readFileSync(join(dest, 'dog-config.json'), 'utf8'), '{"name":"mine"}');
-      assert.equal(existsAnim(dest), false);
+      assert.equal(readFileSync(join(dest, 'dog-animation', '待机呼吸.webm'), 'utf8'), 'webm');
+      assert.equal(readFileSync(join(dest, 'dog-character.png'), 'utf8'), 'png');
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+    }
+  });
+
+  test('动画目录部分写入时只补缺失文件，保留自定义动画', () => {
+    const parent = mkdtempSync(join(tmpdir(), 'dsh-pet-seed-partial-'));
+    try {
+      const bundle = join(parent, 'bundle');
+      const dest = join(parent, 'pet');
+      const existing = join(dest, 'dog-animation');
+      makeBundle(bundle, 'dog', '{"name":"new"}');
+      writeFileSync(join(bundle, 'dog', 'dog-animation', '点击.webm'), 'bundled click');
+      mkdirSync(existing, { recursive: true });
+      writeFileSync(join(dest, 'dog-config.json'), '{"name":"mine"}');
+      writeFileSync(join(existing, '点击.webm'), 'custom click');
+      assert.deepEqual(seedBundledPetPacks(dest, bundle), []);
+      assert.equal(readFileSync(join(existing, '待机呼吸.webm'), 'utf8'), 'webm');
+      assert.equal(readFileSync(join(existing, '点击.webm'), 'utf8'), 'custom click');
     } finally {
       rmSync(parent, { recursive: true, force: true });
     }
@@ -103,7 +137,7 @@ describe('seedBundledPetPacks', () => {
       writeFileSync(join(dest, 'dog-config.json'), '{"name":"mine"}');
       assert.deepEqual(seedBundledPetPacks(dest, bundle), []);
       assert.equal(readFileSync(join(dest, 'dog-config.json'), 'utf8'), '{"name":"mine"}');
-      assert.equal(existsAnim(dest), false);
+      assert.equal(existsAnim(dest), true);
       assert.equal(readFileSync(join(dest, 'dog-memes', '打招呼.png'), 'utf8'), 'bundled');
     } finally {
       rmSync(parent, { recursive: true, force: true });

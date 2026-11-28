@@ -90,7 +90,7 @@
     "prepack": "npm run build && npm run verify:package",
     "verify:package": "npm run typecheck && npm run lint && npm run check:cycles && npm run check:runtime && npm run format:check && node scripts/prepack-check.js && npm run check:release-assets && npm run check:openapi",
     "check:openapi": "node scripts/check-openapi.mjs",
-    "check:release-assets": "node scripts/check-release-assets.mjs",
+    "check:release-assets": "node --experimental-strip-types scripts/check-release-assets.mjs",
     "test": "node --experimental-strip-types --import ./scripts/test-register.mjs --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "types": "node scripts/gen-types.mjs",

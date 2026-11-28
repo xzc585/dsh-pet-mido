@@ -5,7 +5,7 @@
 #      永不执行的动态 import（@electron/get、@electron-internal/extract-zip，见 tsdown.config.mjs）。
 #   2. electronDist 指向本机已解压的 Electron（默认 ~/.dsh/electron），由 scripts/dist.mjs 注入，
 #      避免每次打包都从 GitHub 重新下一套 110 MB —— 这台机器 github.com 不通。
-#   3. 动画和表情留在 asar。Windows 内存清理助手放在 resources/tools，供系统直接执行。
+#   3. 米豆种类素材放在 resources/assets，供首次启动用原生 fs 复制。清理助手放在 resources/tools。
 appId: com.pc2005.dsh-pet
 productName: dsh-pet
 copyright: dsh-pet contributors
@@ -20,8 +20,6 @@ extraMetadata:
 files:
   - lib/**
   - runtime/**
-  - assets/pet-packs/**
-  - '!assets/pet-packs/**/preview.gif'
   - assets/webm/**
   - assets/fonts/**
   - assets/pic/**
@@ -33,6 +31,11 @@ files:
   - '!node_modules/**'
 
 extraResources:
+  - from: assets/pet-packs
+    to: assets/pet-packs
+    filter:
+      - '**/*'
+      - '!**/preview.gif'
   - from: assets/tools
     to: tools
     filter:

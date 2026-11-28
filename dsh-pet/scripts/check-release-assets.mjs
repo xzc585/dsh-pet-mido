@@ -1,24 +1,27 @@
 #!/usr/bin/env node
 /** 核对 npm 发布文件清单或 Windows 解包目录里的米豆资源。 */
 import { execSync } from 'node:child_process';
-import { readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { bundledPetPacksDir, seedBundledPetPacks } from '../src/host/pet-pack-seed.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const dog = 'assets/pet-packs/dog';
 const dogConfig = `${dog}/dog-config.json`;
 const helper = 'tools/mido-ram-cleaner.exe';
 const format = process.argv[2];
+const desktopFiles = ['lib/app.js', 'runtime/electron-helper/shared-core.js', 'assets/config.jsonc'];
 
-function requireFiles(files, names) {
-  const missing = names.filter((name) => !files.has(name));
+function requireFiles(hasFile, names) {
+  const missing = names.filter((name) => !hasFile(name));
   if (missing.length) throw new Error(`缺少发布文件：${missing.join('、')}`);
 }
 
-function verifyAssets(files, readFile) {
-  requireFiles(files, [dogConfig]);
+function verifyAssets(hasFile, readFile) {
+  requireFiles(hasFile, [dogConfig]);
   const config = JSON.parse(readFile(dogConfig));
   const { idle, turn, drag, clicks, moves, categories, events, sleep } = config.animations;
   const names = new Set([
@@ -33,16 +36,14 @@ function verifyAssets(files, readFile) {
   ]);
   const memeNames = Object.keys(config.memes);
   const required = [
-    'lib/app.js',
-    'runtime/electron-helper/shared-core.js',
-    'assets/config.jsonc',
     `${dog}/dog-character.png`,
     ...[...names].map((name) => `${dog}/dog-animation/${name}.webm`),
     ...memeNames.map((name) => `${dog}/dog-memes/${name}.png`),
   ];
   if (!idle.length || !memeNames.length) throw new Error('米豆必须有待机动画和对话配图');
-  requireFiles(files, required);
+  requireFiles(hasFile, required);
   console.log(`已核对 ${names.size} 段米豆动画、${memeNames.length} 张配图及桌面运行文件`);
+  return idle[0];
 }
 
 function checkNpm() {
@@ -54,8 +55,10 @@ function checkNpm() {
     }),
   );
   const files = new Set(pack.files.filter((file) => file.size > 0).map((file) => file.path));
-  verifyAssets(files, (name) => readFileSync(join(root, name), 'utf8'));
-  requireFiles(files, [
+  const hasFile = (name) => files.has(name);
+  verifyAssets(hasFile, (name) => readFileSync(join(root, name), 'utf8'));
+  requireFiles(hasFile, [
+    ...desktopFiles,
     'lib/index.js',
     'lib/client.js',
     'lib/standalone.js',
@@ -75,7 +78,8 @@ function checkWindows() {
   const appBuilderRequire = createRequire(builderRequire.resolve('app-builder-lib/package.json'));
   const asar = appBuilderRequire('@electron/asar');
   const directory = resolve(process.argv[3] ?? join(root, 'dist-app/win-unpacked'));
-  const archive = join(directory, 'resources', 'app.asar');
+  const resources = join(directory, 'resources');
+  const archive = join(resources, 'app.asar');
   const files = new Set(
     asar
       .listPackage(archive)
@@ -83,13 +87,31 @@ function checkWindows() {
       .filter((path) => asar.statFile(archive, path).size > 0)
       .map((path) => path.replaceAll('\\', '/')),
   );
-  verifyAssets(files, (name) => asar.extractFile(archive, join(...name.split('/'))).toString('utf8'));
-  if (files.has(`assets/${helper}`)) throw new Error('Windows 助手应放在 ASAR 外');
+  requireFiles((name) => files.has(name), desktopFiles);
+  if (files.has(dogConfig) || files.has(`assets/${helper}`)) throw new Error('米豆素材和 Windows 助手应放在 ASAR 外');
+  const hasResource = (name) => {
+    const stat = statSync(join(resources, name), { throwIfNoEntry: false });
+    return stat?.isFile() && stat.size > 0;
+  };
+  const idle = verifyAssets(hasResource, (name) => readFileSync(join(resources, name), 'utf8'));
   for (const path of ['dsh-pet.exe', `resources/${helper}`]) {
     const stat = statSync(join(directory, path));
     if (!stat.isFile() || stat.size === 0) throw new Error(`无效的可执行文件：${path}`);
   }
-  console.log('Windows 解包产物及外置内存清理助手检查通过');
+  // 文件出现在清单里还不够，必须能从真实的解包路径初始化一个新用户目录。
+  const bundle = bundledPetPacksDir(archive);
+  if (!bundle) throw new Error('桌面启动器找不到外置米豆素材');
+  const profile = mkdtempSync(join(tmpdir(), 'mido-release-profile-'));
+  try {
+    const seeded = seedBundledPetPacks(profile, bundle);
+    const animation = join('dog-animation', idle + '.webm');
+    const actual = readFileSync(join(profile, animation));
+    const source = readFileSync(join(bundle, 'dog', animation));
+    if (!seeded.includes('dog') || !actual.equals(source)) throw new Error('首次启动未正确初始化米豆');
+  } finally {
+    rmSync(profile, { recursive: true, force: true });
+  }
+  console.log('Windows 解包产物、首次启动素材初始化及外置内存清理助手检查通过');
 }
 
 try {

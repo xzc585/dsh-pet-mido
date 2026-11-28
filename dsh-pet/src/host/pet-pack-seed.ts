@@ -1,26 +1,29 @@
 /**
  * 把包内附带的宠物种类写到用户的 pet/ 目录。
  *
- * 首次出现的种类：复制配置、`<kind>-animation/`、立绘，以及（若包内有）`<kind>-memes/`。
- * 目标已有配置文件时：不覆盖配置、动画和立绘；若目标还没有 `<kind>-memes/` 而包内有，则补拷该目录；
+ * 首次出现的种类：先复制动画、立绘和表情包，素材就绪后再复制配置。
+ * 已有配置的种类：补齐缺失动画、立绘和表情包目录，保留已有文件。
  * 若目标配置缺少 `memes` 字段（键不存在或值为 undefined）而包内配置有 `memes` 对象，则只把该字段合并进去，其它用户字段一律不动。
  * 用户目录里已经存在的 `<kind>-memes/` 不会被覆盖。
  * 这和对话长期记忆无关：只是把 `assets/pet-packs/<kind>/` 拷到 `$DSH_HOME/dsh-pet/pet/`。
  * @module dsh-pet/src/host/pet-pack-seed
  */
-import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { cpSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { basename, join } from 'node:path';
 
+import { writeTextAtomicallySync } from './atomic-file.ts';
 import { readJsonc } from './config/jsonc.ts';
 import { PACKAGE_ROOT } from './paths.ts';
 
 /**
- * 包内宠物种类根目录。构建后 `PACKAGE_ROOT` 是包根；测试从 `src/host` 加载时是 `src/`，
- * 所以同时看上一级的 `assets/pet-packs`。
+ * Windows 解包版使用 app.asar 旁边的真实目录，避免 Electron 在 ASAR 内递归复制失败。
+ * 其他模式从包根的 assets/pet-packs 读取，从源码测试时也查上一级。
  */
 export function bundledPetPacksDir(packageRoot = PACKAGE_ROOT): string | undefined {
-  const candidates = [join(packageRoot, 'assets', 'pet-packs'), join(packageRoot, '..', 'assets', 'pet-packs')];
-  return candidates.find((dir) => existsSync(dir));
+  const own = join(packageRoot, 'assets', 'pet-packs');
+  const parent = join(packageRoot, '..', 'assets', 'pet-packs');
+  const candidates = basename(packageRoot) === 'app.asar' ? [parent] : [own, parent];
+  return candidates.find(isDir);
 }
 
 function isDir(path: string): boolean {
@@ -67,7 +70,7 @@ function mergeBundledMemes(destConfig: string, srcConfig: string): void {
   if (!dest) return;
   if (Object.prototype.hasOwnProperty.call(dest, 'memes') && dest.memes !== undefined) return;
   dest.memes = memes;
-  writeFileSync(destConfig, JSON.stringify(dest, null, 2) + '\n', 'utf8');
+  writeTextAtomicallySync(destConfig, JSON.stringify(dest, null, 2) + '\n');
 }
 
 /** 包内有 `<kind>-memes/` 且目标还没有时才复制；已有目标目录一律不覆盖。 */
@@ -79,7 +82,7 @@ function seedMemesDir(srcDir: string, destDir: string, kind: string): void {
 }
 
 /**
- * 将尚未出现在用户目录里的内置种类复制过去；已有种类按需补拷 `<kind>-memes/` 并可能合并 `memes` 字段。
+ * 将内置种类复制到用户目录，并修复之前初始化中断留下的缺失素材。
  *
  * @param petConfigDir - `$DSH_HOME/dsh-pet/pet`。
  * @param bundledRoot - 测试可注入；缺省时自动定位包内目录。
@@ -97,27 +100,21 @@ export function seedBundledPetPacks(petConfigDir: string, bundledRoot = bundledP
     const srcConfigJsonc = join(srcDir, kind + '-config.jsonc');
     const srcConfig = existsSync(srcConfigJson) ? srcConfigJson : existsSync(srcConfigJsonc) ? srcConfigJsonc : '';
     const srcAnim = join(srcDir, kind + '-animation');
-    if (!srcConfig || !existsSync(srcAnim)) continue;
+    if (!srcConfig || !isDir(srcAnim)) continue;
     const dest = resolveDestConfig(petConfigDir, kind, srcConfig);
     const destAnim = join(petConfigDir, kind + '-animation');
-    const destCharacterPng = join(petConfigDir, kind + '-character.png');
-    const destCharacterJpg = join(petConfigDir, kind + '-character.jpg');
+    cpSync(srcAnim, destAnim, { recursive: true, force: false });
+    const portraits = ['png', 'jpg', 'jpeg', 'webp'].map((ext) => kind + '-character.' + ext);
+    if (!portraits.some((file) => existsSync(join(petConfigDir, file)))) {
+      const portrait = portraits.find((file) => existsSync(join(srcDir, file)));
+      if (portrait) cpSync(join(srcDir, portrait), join(petConfigDir, portrait), { force: false });
+    }
+    seedMemesDir(srcDir, petConfigDir, kind);
     if (dest.exists) {
-      seedMemesDir(srcDir, petConfigDir, kind);
       mergeBundledMemes(dest.path, srcConfig);
       continue;
     }
-    mkdirSync(petConfigDir, { recursive: true });
-    cpSync(srcConfig, dest.path);
-    if (!existsSync(destAnim)) cpSync(srcAnim, destAnim, { recursive: true });
-    const srcCharacter = ['png', 'jpg', 'jpeg', 'webp']
-      .map((ext) => join(srcDir, kind + '-character.' + ext))
-      .find((file) => existsSync(file));
-    if (srcCharacter && !existsSync(destCharacterPng) && !existsSync(destCharacterJpg)) {
-      const ext = srcCharacter.slice(srcCharacter.lastIndexOf('.'));
-      cpSync(srcCharacter, join(petConfigDir, kind + '-character' + ext));
-    }
-    seedMemesDir(srcDir, petConfigDir, kind);
+    cpSync(srcConfig, dest.path, { force: false });
     seeded.push(kind);
   }
   return seeded;
