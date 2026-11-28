@@ -26,6 +26,8 @@ import dog_balance_motion
 import dog_body_motion
 import dog_gait_motion
 import dog_local_motion
+import dog_sleep_motion
+import dog_stretch_motion
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = Path(__file__).resolve().parent / "dog-source"
@@ -46,6 +48,7 @@ LOCAL_MOTIONS = {
 }
 GAIT_MOTIONS = {"小步跑", "点击回应-摇尾欢跳", "工作状态-欢跳成功"}
 BODY_MOTIONS = {"被抱起", "睡觉-循环"}
+SLEEP_TRANSITIONS = {"睡觉-入睡": False, "睡觉-醒来": True}
 BALANCE_MOTIONS = {
     "余额-骨头满篮": "basket",
     "余额-摇铃得意": "bell",
@@ -55,8 +58,10 @@ BALANCE_MOTIONS = {
     "余额-可怜巴巴": "sad_bowl",
 }
 DIG_MOTIONS = {"刨一刨", "工作状态-刨地忙碌"}
+STRETCH_MOTION = "伸懒腰"
 SMOOTH_LOOP_RATES = dict.fromkeys(
-    (*LOCAL_MOTIONS, *GAIT_MOTIONS, *BODY_MOTIONS, *BALANCE_MOTIONS, *DIG_MOTIONS, "摇尾巴", "坐下歪头"), 24
+    (*LOCAL_MOTIONS, *GAIT_MOTIONS, *BODY_MOTIONS, *BALANCE_MOTIONS, *DIG_MOTIONS,
+     *SLEEP_TRANSITIONS, STRETCH_MOTION, "摇尾巴", "坐下歪头"), 24
 )
 MOTION_MASTERS = SOURCE / "motion-masters"
 GROUND = int(H * 0.88)
@@ -339,8 +344,6 @@ class PoseBank:
                 raise FileNotFoundError(f"缺少姿势底板：{path}")
             print(f"  keying {path.name} …", flush=True)
             self.raw[name] = load_pose(path)
-        # 睡觉循环的“静止帧”，入睡尾、循环首尾、醒来首必须是同一张。
-        self.sleep_rest = None  # filled after first render helper
 
     def plate(self, name: str, lift: float = 0.0, x_shift: float = 0.0, scale: float = 1.0) -> Image.Image:
         return fit_on_canvas(self.raw[name], POSE_HEIGHT[name], lift=lift, x_shift=x_shift, scale=scale)
@@ -437,26 +440,7 @@ def render_sit_motion(
     return add_shadow(sit, 0)
 
 
-def sleep_rest(bank: PoseBank) -> Image.Image:
-    if bank.sleep_rest is None:
-        bank.sleep_rest = R(bank, "sleep", breath=0.0)
-    return bank.sleep_rest.copy()
-
-
 # ---------- 动画 ----------
-
-def anim_stretch(bank: PoseBank, t: float) -> Image.Image:
-    # 坐 → 半鞠躬 → 全伸懒腰 → 半鞠躬 → 坐，硬切相近形体，不对叠残影。
-    if t < 0.12:
-        return R(bank, "sit", breath=0.2)
-    if t < 0.28:
-        return R(bank, "stretch_mid", breath=0.2)
-    if t < 0.72:
-        return R(bank, "stretch", breath=math.sin(t * 2 * math.pi) * 0.25)
-    if t < 0.88:
-        return R(bank, "stretch_mid", breath=0.2)
-    return R(bank, "sit", breath=0.2)
-
 
 def anim_wag(bank: PoseBank, t: float) -> Image.Image:
     # 摆动从尾根向外放大，尾尖稍晚转向，在切回待机前自然收住。
@@ -497,43 +481,13 @@ def anim_spin(bank: PoseBank, t: float) -> Image.Image:
     return R(bank, poses[idx], lift=0.04, x_shift=math.sin((idx + local) / len(poses) * 2 * math.pi) * 0.03, breath=0.15)
 
 
-def anim_sleep_start(bank: PoseBank, t: float) -> Image.Image:
-    # 坐 → 困倦坐（可混合，形体接近）→ 趴前腿 → 近睡 → 趴睡静止帧。全程不改整狗透明度。
-    if t < 0.16:
-        return R(bank, "sit", breath=0.4 * (1 - t / 0.16))
-    if t < 0.28:
-        k = ease((t - 0.16) / 0.12)
-        return render(bank, {"sit": 1 - k, "drowsy": k})
-    if t < 0.42:
-        return R(bank, "drowsy")
-    if t < 0.62:
-        return R(bank, "lie_start")
-    if t < 0.80:
-        return R(bank, "lie_mid")
-    return sleep_rest(bank)
-
-
-def anim_sleep_end(bank: PoseBank, t: float) -> Image.Image:
-    if t <= 0:
-        return sleep_rest(bank)
-    if t < 0.18:
-        return sleep_rest(bank)
-    if t < 0.36:
-        return R(bank, "lie_mid")
-    if t < 0.52:
-        return R(bank, "lie_start")
-    if t < 0.78:
-        return R(bank, "yawn")
-    return R(bank, "sit", breath=math.sin(((t - 0.78) / 0.22) * math.pi) * 0.4)
-
-
 ANIMATIONS: list[tuple[str, float, bool, object]] = [
     ("待机呼吸", 2.0, True, partial(LOCAL_MOTIONS["待机呼吸"], shadow=add_shadow)),
     ("转转头", 32 / FPS, True, partial(LOCAL_MOTIONS["转转头"], shadow=add_shadow)),
     ("被抱起", 25 / FPS, True, partial(dog_body_motion.held, shadow=add_shadow, affine=affine_about)),
     ("点击回应-摇尾欢跳", 25 / FPS, True, partial(dog_gait_motion.jump_frame, shadow=add_shadow)),
     ("小步跑", 25 / FPS, True, partial(dog_gait_motion.run_frame, shadow=add_shadow)),
-    ("伸懒腰", 2.4, True, anim_stretch),
+    (STRETCH_MOTION, 30 / FPS, False, None),
     ("摇尾巴", 2 + 1 / FPS, True, anim_wag),
     ("坐下歪头", 2 + 1 / FPS, True, anim_sit_tilt),
     ("转圈追尾巴", 2.2, True, anim_spin),
@@ -552,9 +506,9 @@ ANIMATIONS: list[tuple[str, float, bool, object]] = [
     ("工作状态-坐等", 25 / FPS, True, partial(LOCAL_MOTIONS["工作状态-坐等"], shadow=add_shadow)),
     ("工作状态-欢跳成功", 25 / FPS, True, partial(dog_gait_motion.jump_frame, shadow=add_shadow, success=True)),
     ("工作状态-垂耳失落", 25 / FPS, True, partial(LOCAL_MOTIONS["工作状态-垂耳失落"], shadow=add_shadow)),
-    ("睡觉-入睡", 2.8, False, anim_sleep_start),
+    ("睡觉-入睡", 34 / FPS, False, None),
     ("睡觉-循环", 25 / FPS, False, partial(dog_body_motion.sleeping, shadow=add_shadow)),
-    ("睡觉-醒来", 2.8, False, anim_sleep_end),
+    ("睡觉-醒来", 34 / FPS, False, None),
 ]
 
 
@@ -672,6 +626,12 @@ def main() -> None:
         rate = SMOOTH_LOOP_RATES.get(name, FPS)
         if name in DIG_MOTIONS:
             frames = dig_frames
+        elif name == STRETCH_MOTION:
+            frames = dog_stretch_motion.render_stretch(bank, MOTION_MASTERS, shadow=add_shadow)
+        elif name in SLEEP_TRANSITIONS:
+            frames = dog_sleep_motion.render_transition(
+                bank, MOTION_MASTERS, waking=SLEEP_TRANSITIONS[name], shadow=add_shadow
+            )
         elif name in BALANCE_MOTIONS:
             pose = BALANCE_MOTIONS[name]
             with Image.open(MOTION_MASTERS / f"{pose}-master.png") as master:
@@ -686,14 +646,14 @@ def main() -> None:
         crf = None
         if name in GAIT_MOTIONS:
             crf = 22
-        elif name in DIG_MOTIONS:
+        elif name in DIG_MOTIONS or name == STRETCH_MOTION:
             crf = 26
         elif name in BALANCE_MOTIONS:
             crf = 28
-        elif name in LOCAL_MOTIONS or name in BODY_MOTIONS or name == "坐下歪头":
+        elif name in LOCAL_MOTIONS or name in BODY_MOTIONS or name in SLEEP_TRANSITIONS or name == "坐下歪头":
             crf = 27
-        encode_webm(frames, dest, rate, crf=crf, cpu_used=4 if name in GAIT_MOTIONS else 3,
-                    sleep_seam=name == "睡觉-循环")
+        encode_webm(frames, dest, rate, crf=crf, cpu_used=4 if name in GAIT_MOTIONS or name == STRETCH_MOTION else 3,
+                    sleep_seam=name == "睡觉-循环" or name in SLEEP_TRANSITIONS)
         top = _opaque_top(frames[len(frames)//2])
         print(f"  {name}.webm  ({len(frames)} frames, {dest.stat().st_size} bytes, mid-top={top})", flush=True)
         if name == "待机呼吸":
