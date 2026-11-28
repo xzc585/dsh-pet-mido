@@ -92,6 +92,41 @@ def _is_cream(r: np.ndarray, g: np.ndarray, b: np.ndarray) -> np.ndarray:
     return (lum > 70) & (r > 80) & (g > 60) & (r + g > b * 1.6)
 
 
+def restore_reference_edge_color(image: np.ndarray) -> None:
+    """Remove dark background color from the seated source's exterior fur."""
+    import cv2
+
+    alpha = image[..., 3].astype(np.float32) / 255
+    rgb = image[..., :3].astype(np.float32)
+    luminance = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    light = rgb @ luminance
+    outside = np.pad((alpha < 0.04).astype(np.uint8), 1, constant_values=1)
+    cv2.floodFill(outside, None, (0, 0), 2, flags=8)
+    depth = cv2.distanceTransform((outside[1:-1, 1:-1] != 2).astype(np.uint8), cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
+    # These distances are in the 1024 px source. Only trust fully covered fur a few output pixels inward.
+    inner_depth = 10
+    anchor = (alpha >= 0.97) & (depth >= inner_depth)
+    if not anchor.any():
+        return
+
+    gap, labels = cv2.distanceTransformWithLabels((~anchor).astype(np.uint8), cv2.DIST_L2, 5,
+                                                   labelType=cv2.DIST_LABEL_PIXEL)
+    mask = anchor.astype(np.float32)
+    weighted_color = cv2.GaussianBlur(rgb * mask[..., None], (7, 7), 1.75)
+    opacity = cv2.GaussianBlur(mask, (7, 7), 1.75)
+    average_color = weighted_color / np.maximum(opacity, 0.001)[..., None]
+    colors = np.zeros((labels.max() + 1, 3), dtype=np.float32)
+    colors[labels[anchor]] = average_color[anchor]
+    fur = colors[labels]
+    fur_light = fur @ luminance
+    smoothstep = dog_local_motion.smoothstep
+    matte = smoothstep((fur_light - light - 9) / 46)
+    rim = smoothstep((inner_depth + 5 - depth) / (inner_depth * 0.8))
+    has_neighbor = smoothstep((inner_depth + 13 - gap) / (inner_depth * 0.8))
+    weight = np.where((alpha > 0.017) & (fur_light > 60), 0.94 * rim * has_neighbor * matte, 0)
+    image[..., :3] = np.rint(rgb + (fur - rgb) * weight[..., None]).astype(np.uint8)
+
+
 def key_dark_background(im: Image.Image, luma_thr: float = 36.0, *, keep_low_nose: bool = False) -> Image.Image:
     im = im.convert("RGBA")
     arr = np.array(im)
@@ -201,6 +236,7 @@ def clean_reference_alpha(im: Image.Image) -> Image.Image:
         ch[edge] = np.clip(ch[edge] * boost[edge], 0, 255)
         out[..., c] = ch.astype(np.uint8)
     out[..., 3] = (fa * 255).astype(np.uint8)
+    restore_reference_edge_color(out)
     return Image.fromarray(out)
 
 
