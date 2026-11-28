@@ -46,8 +46,8 @@ function numberField(id, label, value, onChange, opts) {
     }
   }
   input.addEventListener('input', () => {
-    const parsed = Number(input.value);
-    if (input.value === '' || !Number.isFinite(parsed)) return;
+    const parsed = input.value === '' ? NaN : Number(input.value);
+    if (!Number.isFinite(parsed) && !opts?.allowInvalid) return;
     onChange(parsed);
     markDirty(true);
   });

@@ -42,9 +42,10 @@ const playClickSound = () => {
 class PetSprite {
   constructor(pet) {
     this.pet = pet; // 这只宠物的配置段（拍平后的成品实例，条目级字段已吹入）
-    // 页面级缩放（主进程对窗口 setZoomFactor）统一放大整窗：pet.size 即 CSS 像素基准，
-    // 不再手工乘 CONFIG.scale；跨进程交换由 constants.js 的 toScreen/toLocal 收口。
-    this.size = pet.size;
+    // 宠物初始锚在主屏。屏宽与画框同为 CSS 像素，落窗时再统一换到屏幕坐标。
+    this.size = S.isValidSizePercent(pet.sizePercent)
+      ? S.resolvePetSizePx(pet.size, pet.sizePercent, PRIMARY_AREA?.width ?? VIEW.w)
+      : pet.size;
     this.height = (this.size * 9) / 16;
     this.halfW = this.size / 2;
     this.halfH = this.height / 2;

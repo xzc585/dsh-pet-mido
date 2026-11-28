@@ -31,7 +31,9 @@ DSH 设置 → 「桌宠配置」：
 ]
 ```
 
-- 每只宠物：`id`（标识）／`size`（宽度 px）／`sizePercent`（可选，屏幕宽度百分比 1–100；写了就按窗口宽收口、`size` 作上限）／`balanceEnabled`（是否启用余额功能，必填布尔）／`display`（web/desktop/both/none，必填，见上）／`position`（corner 四角之一 + marginX/marginY 边距）
+- 每只宠物可配置 `id`（标识）、`size`（画框宽度，含左右透明区域）、`sizePercent`（可选，人物本体占屏宽度上限，至少 1%）、`balanceEnabled`（余额开关）、`display`（显示位置）和 `position`（停靠角落及边距）。
+
+- 桌面端用主显示器的工作区宽度计算百分比上限。填写百分比后，两项设置都限制最终大小。要只按像素调整，在独立设置页清空「屏幕宽度上限（%）」。
 - 余额刷新周期：`eventsRefreshSec.balance`（秒）——余额数据刷新与余额动画触发的间隔，启动时立即触发一次，之后按此周期循环（默认 1800）
 - 设置页的修改保存到用户层 `$DSH_HOME/dsh-pet/main-config.jsonc`（**完整宠物列表**，覆盖包内默认）；「同步」把包内 `config.jsonc` 原文整份写入该文件（等价于回落默认，但文件保留下来、可直接编辑）
 

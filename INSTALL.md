@@ -105,7 +105,7 @@ $env:MIDO_PET_ROOT = (Resolve-Path .\dsh-pet).Path
 1. **米豆（kind: `dog`）**：首次启动会把内置种类写入 `$DSH_HOME/dsh-pet/pet/`。打开设置页的宠物列表，可在「dog / 米豆」这一组里改大小、位置与显示方式。若该目录里已经有 `dog-config.json`，不会覆盖你的改动。
 2. **插件「清理缓存」**：设置页（或独立模式设置）有「清理缓存」卡，默认开启。默认值：`intervalSec` 1800（30 分钟）、`thresholdMb` 512、`debounceSec` 120。可改这些值，也可以点「立即清理」。它清的是语音缓存、未在播放的动画 blob，以及 uapi / 天气缓存；**不会**清理系统内存，**不会**删除对话记录，也 **不能保证** 整个 DeepSeek Harness 进程占用立刻下降。
 3. **对话配图**：米豆内置 18 张表情图，可在设置中启用对话配图。
-4. **上游形象**：默认条目已隐藏。需要使用「大肥鱼」时，从上游获取素材并放到相应目录，再在设置里启用该条目。已有自定义显示配置继续生效。
+4. **蓝毛小女仆**：默认条目已隐藏。准备好上游动画后，可在设置里把它的显示位置改为「仅桌面」或「两者都显示」。已有自定义显示配置继续生效。
 5. **系统内存清理**：右键米豆 →「打开软件」→ 设置 →「桌宠配置」里的「系统内存清理」（独立模式是右键 →「打开 AI 设置」）。可查看整机占用、开关自动清理、改间隔和阈值，或立刻清一次。插件会自动拉起无窗口帮手，不必再双击桌面上的独立 exe。细节见 [tools/mido-ram-cleaner/README.md](tools/mido-ram-cleaner/README.md)。
 
 重新生成米豆动画（可选，需 Python 3、Pillow、numpy、带 libvpx-vp9 的 ffmpeg）：
@@ -113,6 +113,10 @@ $env:MIDO_PET_ROOT = (Resolve-Path .\dsh-pet).Path
 ```bash
 python3 dsh-pet/scripts/generate-dog-pet.py
 ```
+
+## 蓝毛小女仆的动画
+
+从上游 [dsh-pet 0.4.9 发行页](https://github.com/PC2005-cloud/dsh-pet/releases/tag/v0.4.9) 或 [同版本 npm 包](https://www.npmjs.com/package/dsh-pet/v/0.4.9) 取得 `assets/webm` 内的动画文件，将它们放入 `$DSH_HOME/dsh-pet/main-animation/webm/`。Windows 默认目录为 `%USERPROFILE%\.dsh\dsh-pet\main-animation\webm\`。其中应包含 `待机呼吸休闲.webm`。使用形象素材时请保留上游署名并遵循其许可。 [上游许可](https://github.com/PC2005-cloud/dsh-pet/blob/main/README.md#许可)
 
 ## 下一步
 

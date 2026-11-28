@@ -1,8 +1,8 @@
 /**
  * 「桌宠配置」面板的草稿与保存：条目切换、实例列表的读入、面板装配与两个写接口。
  *
- * 编辑的是一份草稿（state.pets），只有点保存才写盘：main 条目连同全局字段走 PUT /config，
- * 其余条目走 POST /pet-config。单只宠物的字段与增删见 ./pet-card，条目级全局字段见 ./globals。
+ * 每个条目保留自己的草稿。点保存后，main 连同全局字段走 PUT /config，其余条目走 POST /pet-config。
+ * 单只宠物的字段与增删见 ./pet-card，条目级全局字段见 ./globals。
  * @module dsh-pet/src/standalone/settings-page/script/pets
  */
 
@@ -15,6 +15,7 @@ function cloneJson(value) {
 
 /** 原配置里的 physics 段，用来判断哪些可选键「本来就有」。 */
 let physicsSource = null;
+let petBaselines = new Map();
 
 /** 动作频率权重：缺字段或非法项回落到内置默认，三项各自独立判定。 */
 function pickWeights(raw) {
@@ -79,7 +80,10 @@ function pickGlobals(main) {
   };
 }
 
-function initDrafts(config) {
+function initDrafts(config, pending = []) {
+  const previousPets = state.pets;
+  const previousGlobals = state.globals;
+  const previousPhysics = physicsSource;
   state.config = config;
   state.globals = pickGlobals(config.main);
   state.pets = {};
@@ -91,7 +95,14 @@ function initDrafts(config) {
     if (typeof conf.whisperPrompt === 'string') state.prompts[key] = conf.whisperPrompt;
   }
   if (!state.pets.main) state.pets.main = [];
+  petBaselines = new Map(Object.keys(state.pets).map((entry) => [entry, JSON.stringify(petEntryBody(entry))]));
+  for (const entry of pending) state.pets[entry] = previousPets[entry];
+  if (pending.includes('main')) {
+    state.globals = previousGlobals;
+    physicsSource = previousPhysics;
+  }
   if (!state.pets[state.entry]) state.entry = 'main';
+  if (state.petIndex >= currentPets().length) state.petIndex = 0;
 }
 
 function currentPets() {
@@ -171,48 +182,74 @@ function petsBody() {
   });
 }
 
+function petEntryBody(entry) {
+  return entry === 'main' ? petsBody() : { entry, pets: state.pets[entry] };
+}
+
+function changedPetEntries() {
+  return Object.keys(state.pets).filter((entry) => JSON.stringify(petEntryBody(entry)) !== petBaselines.get(entry));
+}
+
+function checkedPetEntry(entry) {
+  const body = petEntryBody(entry);
+  if (body.pets.length === 0) throw new Error('每个条目至少需要保留一只宠物。');
+  const pets = body.pets.map((pet) => {
+    const name = '「' + (pet.name || pet.id) + '」';
+    if (!Number.isFinite(pet.size) || pet.size < 1) throw new Error(name + '的画框宽度须为不小于 1 的数字。');
+    if (pet.sizePercent === undefined) return pet;
+    const sizePercent = Number(pet.sizePercent);
+    if (!Number.isFinite(sizePercent) || sizePercent < 1) {
+      throw new Error(name + '的本体占屏宽度上限须留空或填写不小于 1 的数字。');
+    }
+    return { ...pet, sizePercent };
+  });
+  return { ...body, pets };
+}
+
+async function savePetEntry(entry, body) {
+  if (entry !== 'main') return callApi('POST', '/pet-config', body);
+  const merged = await callApi('PUT', '/config', body);
+  if (!merged || merged.ok !== false || merged.reason !== 'user-config-unparsable') return merged;
+  const file = merged.userFile ? String(merged.userFile) : '用户配置';
+  const confirmed = await confirmDialog({
+    title: '配置文件无法解析',
+    text: file + '\\n继续保存会按白名单重建这个文件，里面其它内容会丢失。',
+    confirmLabel: '覆盖保存',
+    danger: true,
+  });
+  if (!confirmed) throw new Error('已取消保存。');
+  return callApi('PUT', '/config?force=1', body);
+}
+
 async function savePets() {
   const status = byId('pet-status');
   const saveBtn = byId('pet-save');
-  if (state.entry === 'main' && currentPets().length === 0) {
-    setStatus(status, '默认条目至少要保留一只宠物，否则宿主会拒绝保存。', 'error');
-    return;
-  }
+  const fields = byId('pet-cards');
+  const pending = changedPetEntries();
+  const entries = pending.length ? pending : [state.entry];
   saveBtn.disabled = true;
+  fields.inert = true;
   setStatus(status, '正在保存…');
+  let saved = 0;
   try {
-    let merged;
-    if (state.entry === 'main') {
-      merged = await callApi('PUT', '/config', petsBody());
-      if (merged && merged.ok === false && merged.reason === 'user-config-unparsable') {
-        const file = merged.userFile ? String(merged.userFile) : '用户配置';
-        const confirmed = await confirmDialog({
-          title: '配置文件无法解析',
-          text: file + '\\n继续保存会按白名单重建这个文件，里面其它内容会丢失。',
-          confirmLabel: '覆盖保存',
-          danger: true,
-        });
-        if (!confirmed) {
-          setStatus(status, '已取消保存。', 'error');
-          return;
-        }
-        merged = await callApi('PUT', '/config?force=1', petsBody());
+    const bodies = entries.map(checkedPetEntry);
+    for (let i = 0; i < entries.length; i++) {
+      const merged = await savePetEntry(entries[i], bodies[i]);
+      if (!merged || merged.ok === false) {
+        throw new Error((merged && (merged.message || merged.reason)) || '宿主拒绝了这次保存。');
       }
-    } else {
-      merged = await callApi('POST', '/pet-config', { entry: state.entry, pets: currentPets() });
+      saved += 1;
+      initDrafts(merged, entries.slice(saved));
     }
-    if (!merged || merged.ok === false) {
-      setStatus(status, (merged && (merged.message || merged.reason)) || '宿主拒绝了这次保存。', 'error');
-      return;
-    }
-    initDrafts(merged);
-    markDirty(false);
-    renderPetsPanel();
     setStatus(status, '已保存到本机。', 'ok');
   } catch (error) {
-    setStatus(status, error && error.message ? error.message : String(error), 'error');
+    const prefix = saved > 0 ? '已保存 ' + saved + ' 个条目。' : '';
+    setStatus(status, prefix + (error && error.message ? error.message : String(error)), 'error');
   } finally {
+    fields.inert = false;
     saveBtn.disabled = false;
+    markDirty(changedPetEntries().length > 0);
+    if (saved > 0) renderPetsPanel();
   }
 }
 `;

@@ -12,6 +12,7 @@ import { runInNewContext } from 'node:vm';
 
 import { rebaseCenter } from '../shared/displays.ts';
 import { anchorPixel } from '../shared/motion.ts';
+import * as shared from '../shared/index.ts';
 
 /** 工作区高度：1080 减 48px 任务栏。 */
 const AREA_HEIGHT = 1032;
@@ -45,6 +46,55 @@ interface Sprite {
 }
 
 const script = readFileSync(new URL('../../runtime/electron-helper/sprite.js', import.meta.url), 'utf8');
+const windowFit = readFileSync(new URL('../../runtime/electron-helper/sprite/window-fit.js', import.meta.url), 'utf8');
+
+test('桌面尺寸按主屏而非双屏外接宽度限制，画框和窗口上报使用同一尺寸', () => {
+  const view = { x: 0, y: 0, w: 2400, h: AREA_HEIGHT };
+  const primary = { x: 0, y: 0, width: 1200, height: AREA_HEIGHT };
+  const reports: number[][] = [];
+  interface SizingSprite {
+    size: number;
+    hitRect: { w: number };
+    fitWindow(): { width: number };
+    reportWindow(fit: { width: number }): void;
+  }
+  const PetSprite = runInNewContext(
+    script +
+      '\n' +
+      windowFit +
+      '\n' +
+      `Object.assign(PetSprite.prototype, {
+        initPlayback() {}, initMotion() {}, initPanels() {}, buildDom() {}, bindEvents() {},
+      }); PetSprite`,
+    {
+      S: shared,
+      BASE: '',
+      navigator: { platform: 'Win32', userAgent: 'test' },
+      WINDOW_MARGIN_RATIO: 0.5,
+      config: {},
+      CONFIG: { isWindowClampedToWorkArea: false },
+      VIEW: view,
+      PRIMARY_AREA: primary,
+      toScreen: (px: number) => px * 1.25,
+      window: {
+        __dshPetDebug: {},
+        petBridge: { setBounds: (...bounds: number[]) => reports.push(bounds) },
+      },
+    },
+  ) as new (config: { id: string; size: number; sizePercent?: number }) => SizingSprite;
+
+  const capped = new PetSprite({ id: 'dog', size: 600, sizePercent: 10 });
+  assert.equal(capped.size, 320);
+  assert.equal(capped.hitRect.w, 120);
+  const bounds = capped.fitWindow();
+  capped.reportWindow(bounds);
+  assert.equal(bounds.width, 640);
+  assert.equal(reports[0][2], 800);
+  assert.equal(reports[0][6], 400);
+
+  assert.equal(new PetSprite({ id: 'dog', size: 1800 }).size, 1800, '旧配置没有百分比时按像素显示');
+  assert.equal(new PetSprite({ id: 'dog', size: 280, sizePercent: 100 }).size, 280, '百分比不会放大像素尺寸');
+});
 
 /**
  * 造一只装在 vm 里的宠物，并用变宽的主屏模拟远程桌面接入/断开。

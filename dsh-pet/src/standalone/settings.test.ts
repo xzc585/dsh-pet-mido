@@ -37,6 +37,7 @@ type FakeElement = {
 /** createElement 的替身：能追加、能设属性、能点、能被读值。 */
 type FakeNode = {
   nodeType: number;
+  id?: string;
   isConnected: boolean;
   hidden: boolean;
   value: string;
@@ -50,7 +51,7 @@ type FakeNode = {
   listeners: Record<string, () => void>;
   classList: { toggle(): void };
   append(...kids: unknown[]): void;
-  setAttribute(): void;
+  setAttribute(name: string, value: string): void;
   addEventListener(name: string, fn: () => void): void;
   removeEventListener(): void;
   remove(): void;
@@ -83,7 +84,10 @@ interface Page {
  *
  * 每个 test 都新建，避免用例之间互相污染——脚本在启动时会发请求、改元素状态。
  */
-async function setupPage(): Promise<Page> {
+type TestPet = { id: string; name: string; display: string; size: number; sizePercent?: number };
+type TestConfig = Record<string, { pets: TestPet[] }>;
+
+async function setupPage(config?: TestConfig, rejectEntry?: string): Promise<Page> {
   const elements = new Map<string, FakeElement>();
   const element = (id: string): FakeElement => {
     if (!elements.has(id))
@@ -126,7 +130,9 @@ async function setupPage(): Promise<Page> {
       append(...kids: unknown[]) {
         (el.children as unknown[]).push(...kids);
       },
-      setAttribute() {},
+      setAttribute(name: string, value: string) {
+        el[name] = value;
+      },
       addEventListener(name: string, fn: () => void) {
         (el.listeners as Record<string, () => void>)[name] = fn;
       },
@@ -147,6 +153,7 @@ async function setupPage(): Promise<Page> {
 
   const body = node();
   const requests: RecordedRequest[] = [];
+  let entryRejected = false;
   let stripped = '';
   runInNewContext(settingsScript, {
     URLSearchParams,
@@ -173,6 +180,19 @@ async function setupPage(): Promise<Page> {
     },
     fetch: async (url: string, options: RecordedRequest['options']) => {
       requests.push({ url, options });
+      if (config && url === '/dsh-pet-7340/config' && options.method === 'GET') {
+        return { ok: true, status: 200, json: async () => structuredClone(config) };
+      }
+      if (config && options.body && (url === '/dsh-pet-7340/config' || url === '/dsh-pet-7340/pet-config')) {
+        const body = JSON.parse(options.body) as { entry?: string; pets: TestPet[] };
+        const entry = body.entry ?? 'main';
+        if (entry === rejectEntry && !entryRejected) {
+          entryRejected = true;
+          return { ok: true, status: 200, json: async () => ({ ok: false, message: '暂时无法写入' }) };
+        }
+        config[entry] = { pets: body.pets };
+        return { ok: true, status: 200, json: async () => structuredClone(config) };
+      }
       if (url === '/standalone-ai/models') {
         return {
           ok: true,
@@ -259,6 +279,88 @@ async function setupPage(): Promise<Page> {
 async function settle(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
+}
+
+function twoPets(): TestConfig {
+  const pet = { id: 'main', name: '默认', display: 'none', size: 462 };
+  return { main: { pets: [pet] }, dog: { pets: [{ ...pet, id: 'dog', name: '米豆', display: 'both' }] } };
+}
+
+function findPetControl(page: Page, predicate: (node: FakeNode) => boolean): FakeNode {
+  function find(nodes: unknown[]): FakeNode | undefined {
+    for (const item of [...nodes].reverse()) {
+      const node = item as FakeNode;
+      if (!node?.nodeType) continue;
+      if (predicate(node)) return node;
+      const child = find(node.children ?? []);
+      if (child) return child;
+    }
+    return undefined;
+  }
+  const node = find(page.element('pet-cards').children);
+  assert.ok(node);
+  return node;
+}
+
+function editSize(page: Page, id: string, value: string): void {
+  const field = findPetControl(page, (node) => node.id === id);
+  field.value = value;
+  field.listeners.input();
+}
+
+function selectPetEntry(page: Page, name: string): void {
+  findPetControl(page, (node) => node.className === 'tab' && node.textContent === name).listeners.click();
+}
+
+test('独立设置保存两个条目的像素尺寸，并保留百分比', async () => {
+  const config = twoPets();
+  const page = await setupPage(config);
+  editSize(page, 'pet-size', '320');
+  selectPetEntry(page, 'dog');
+  editSize(page, 'pet-size', '280');
+  editSize(page, 'pet-size-percent', '12.5');
+  await page.element('pet-save').listeners.click();
+  assert.equal(config.main.pets[0].size, 320);
+  assert.equal(config.dog.pets[0].size, 280);
+  assert.equal(config.dog.pets[0].sizePercent, 12.5);
+});
+
+test('某条目保存失败时保留该条目草稿和未保存提示', async () => {
+  const config = twoPets();
+  const page = await setupPage(config, 'dog');
+  editSize(page, 'pet-size', '320');
+  selectPetEntry(page, 'dog');
+  editSize(page, 'pet-size', '280');
+  selectPetEntry(page, '默认条目');
+  await page.element('pet-save').listeners.click();
+  assert.equal(config.main.pets[0].size, 320);
+  assert.equal(config.dog.pets[0].size, 462);
+  assert.match(page.element('pet-status').textContent, /暂时无法写入/);
+  assert.equal(page.element('dirty').hidden, false);
+  selectPetEntry(page, 'dog');
+  assert.equal(findPetControl(page, (node) => node.id === 'pet-size').value, '280');
+  await page.element('pet-save').listeners.click();
+  assert.equal(config.dog.pets[0].size, 280);
+  assert.equal(page.requests.filter(({ options }) => options.method === 'PUT').length, 1);
+  assert.equal(page.element('dirty').hidden, true);
+});
+
+for (const [id, value, label] of [
+  ['pet-size', '', /画框宽度/],
+  ['pet-size-percent', 'xx', /占屏宽度/],
+] as const) {
+  test(`拒绝独立设置无效的尺寸项 ${id}`, async () => {
+    const config = twoPets();
+    const page = await setupPage(config);
+    editSize(page, id, value);
+    await page.element('pet-save').listeners.click();
+    assert.match(page.element('pet-status').textContent, label);
+    assert.equal(
+      page.requests.some(({ options }) => options.method === 'PUT' || options.method === 'POST'),
+      false,
+    );
+    assert.equal(config.main.pets[0].size, 462);
+  });
 }
 
 test('settings validation accepts per-service keys and profiles, rejects unknown fields', () => {

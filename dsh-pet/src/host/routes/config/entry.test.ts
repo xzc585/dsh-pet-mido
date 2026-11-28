@@ -130,11 +130,17 @@ describe('savePetLayer —— 整条目写回', () => {
     writeFileSync(h.userFile, JSON.stringify({ pets: [pet('main1')] }), 'utf8');
     writePack(h.packFile);
     const res = jsonOf(
-      await savePetLayer(h.deps, input({ entry: 'glm', pets: [{ ...pet('glm1'), size: 360, display: 'both' }] })),
+      await savePetLayer(
+        h.deps,
+        input({ entry: 'glm', pets: [{ ...pet('glm1'), size: 360, sizePercent: 8, display: 'both' }] }),
+      ),
     );
     assert.equal(res.status, 200);
     const saved = JSON.parse(readFileSync(h.packFile, 'utf8')) as Record<string, unknown>;
-    assert.equal((saved.pets as Array<{ size: number }>)[0].size, 360, '实例字段应写回');
+    const [savedPet] = saved.pets as Array<{ size: number; sizePercent?: number }>;
+    assert.equal(savedPet.size, 360, '画框宽度应写回');
+    assert.equal(savedPet.sizePercent, 8, '本体占屏宽度上限应写回');
+    assert.equal(h.restarts, 1, '保存后通知桌面使用最新尺寸');
     assert.equal(saved.whisperPrompt, 'GLM 的人设', '条目人设不得被白名单重建抹掉');
     assert.equal(saved.note, '手写的自定义键', '非白名单顶层字段应透传保留');
     const main = JSON.parse(readFileSync(h.userFile, 'utf8')) as { pets: Array<{ id: string }> };

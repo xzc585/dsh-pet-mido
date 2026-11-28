@@ -15,6 +15,7 @@ export * from './motion.ts';
 export * from './balance/index.ts';
 export * from './whisper.ts';
 export * from './config.ts';
+export * from './pet-size.ts';
 export * from './fonts.ts';
 export * from './notify.ts';
 export * from './menu.ts';

@@ -87,18 +87,18 @@ function petCard() {
     ]);
   }
   if (!pet.position) pet.position = { corner: 'bottom-right', marginX: 40, marginY: 40 };
-  const sizePercent = typeof pet.sizePercent === 'number' ? String(pet.sizePercent) : '';
+  const sizePercent = pet.sizePercent === undefined ? '' : String(pet.sizePercent);
   const children = [
     petBar(),
     avatarRow(pet),
     textField('pet-name', '显示名', pet.name || '', (value) => { pet.name = value; }),
     textField('pet-id', '标识（id）', pet.id, (value) => { pet.id = value.trim(); }, { disabled: true, hint: '标识决定素材目录与记忆文件，建好之后不能在这里改。' }),
     make('div', { class: 'grid2' }, [
-      numberField('pet-size', '画框大小（px）', pet.size, (value) => { pet.size = value; }, { min: 1, step: 1 }),
-      textField('pet-size-percent', '占屏宽度（%）', sizePercent, (value) => {
+      numberField('pet-size', '画框宽度（px）', pet.size, (value) => { pet.size = value; }, { min: 1, step: 1, allowInvalid: true, hint: '含画面两侧透明区，数值越小宠物越小。' }),
+      textField('pet-size-percent', '本体占屏宽度上限（%）', sizePercent, (value) => {
         if (value.trim() === '') delete pet.sizePercent;
-        else pet.sizePercent = Number(value);
-      }, { hint: '留空表示按 px 显示。' }),
+        else pet.sizePercent = value;
+      }, { hint: '按主屏宽度限制桌宠本体。留空则桌面按上面的像素宽度显示。' }),
     ]),
     selectField('pet-display', '显示位置', pet.display, DISPLAYS.map((value) => ({ value: value, label: displayLabel(value) })), (value) => { pet.display = value; }, 'web=仅浏览器 / desktop=仅桌面 / both=两者都显示 / none=都不显示'),
     make('div', { class: 'grid2' }, [

@@ -64,7 +64,7 @@ Object.assign(PetSprite.prototype, {
           y: e.clientY,
           score: S.clickScore(grabSpeed, this.size),
           speed: grabSpeed,
-          size: this.pet.size,
+          size: this.size,
         });
       }
     }
