@@ -38,7 +38,7 @@
     "moves": {
       "default": { "minDist": 60, "maxDist": 200, "margin": 20, "leadSec": 0.4, "tailSec": 0.4 },
       "actions": [
-        { "name": "小步跑" }
+        { "name": "小步跑", "params": { "minDist": 80, "maxDist": 80 } }
       ]
     },
     "categories": [

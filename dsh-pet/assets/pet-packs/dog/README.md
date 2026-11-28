@@ -16,6 +16,8 @@
 
 「坐下歪头」和「摇尾巴」用同一张坐姿做局部变形，从正坐开始，动作结束时回到正坐。动画以 24 帧/秒播放，保留原来的约 2.08 秒时长。
 
+待机、转头、抱起、跑跳、刨地、睡姿循环、碎碎念、工作表情和余额动作均按 24 帧/秒生成。小步跑的位移随画框宽度缩放，462 px 画框对应 80 px，以配合片中的步幅。
+
 安装后，首次启动宿主会把配置、动画、立绘和（若有）`dog-memes/` 复制到 `$DSH_HOME/dsh-pet/pet/`（已有 `dog-config.json` 时不覆盖配置）。若已有配置但还没有 `dog-memes/`，仍会补拷表情包目录；若已有配置缺少 `memes` 字段而包内配置有，则只把该字段合并进去，其它用户字段不动。也可手工复制：
 
 ```bash
@@ -26,7 +28,7 @@ cp -R dog-animation "$DSH_HOME/dsh-pet/pet/"
 cp -R dog-memes "$DSH_HOME/dsh-pet/pet/"
 ```
 
-重新生成动画（需 Python 3、Pillow、numpy、ffmpeg，且 ffmpeg 带 libvpx-vp9）。姿势底板放在 `dsh-pet/scripts/dog-source/`（`mido-reference.png` 与各姿势底板）：
+重新生成动画需要 Python 3、Pillow、numpy、opencv-python 和带 libvpx-vp9 的 ffmpeg。原始姿势底板放在 `dsh-pet/scripts/dog-source/`。手工绘制的刨地和余额素材由 `motion-masters/` 保存，生成时保留道具和透明边缘。
 
 ```bash
 python3 scripts/generate-dog-pet.py

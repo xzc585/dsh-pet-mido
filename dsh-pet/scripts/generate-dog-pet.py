@@ -5,7 +5,7 @@
 禁止整只狗改透明度做转场；禁止把二维/像素道具贴纸贴到三维毛发上。
 道具已画在生成的姿势底板里，与狗同一套光照。
 
-依赖：Python 3、Pillow、numpy、ffmpeg（需 libvpx-vp9）。
+依赖：Python 3、Pillow、numpy、opencv-python、ffmpeg（需 libvpx-vp9）。
 """
 
 from __future__ import annotations
@@ -16,10 +16,16 @@ import subprocess
 import sys
 import tempfile
 from collections import deque
+from functools import partial
 from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
+
+import dog_balance_motion
+import dog_body_motion
+import dog_gait_motion
+import dog_local_motion
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = Path(__file__).resolve().parent / "dog-source"
@@ -28,7 +34,31 @@ ANIM_DIR = OUT_DIR / "dog-animation"
 W, H = 640, 360
 FPS = 12
 # 只提高通过对照的循环片段帧率，同时取消片尾重复的起始帧。
-SMOOTH_LOOP_RATES = {"待机呼吸": 24, "摇尾巴": 24, "坐下歪头": 24}
+LOCAL_MOTIONS = {
+    "待机呼吸": dog_local_motion.idle,
+    "转转头": dog_local_motion.turn,
+    "碎碎念-歪头咕哝": dog_local_motion.whisper_tilt,
+    "碎碎念-摇尾说话": dog_local_motion.whisper_talk,
+    "工作状态-歪头思索": dog_local_motion.think,
+    "工作状态-摇尾汇报": dog_local_motion.report,
+    "工作状态-坐等": dog_local_motion.wait,
+    "工作状态-垂耳失落": dog_local_motion.sad,
+}
+GAIT_MOTIONS = {"小步跑", "点击回应-摇尾欢跳", "工作状态-欢跳成功"}
+BODY_MOTIONS = {"被抱起", "睡觉-循环"}
+BALANCE_MOTIONS = {
+    "余额-骨头满篮": "basket",
+    "余额-摇铃得意": "bell",
+    "余额-叼着骨头": "bone",
+    "余额-四处嗅寻": "sniff",
+    "余额-空碗张望": "bowl",
+    "余额-可怜巴巴": "sad_bowl",
+}
+DIG_MOTIONS = {"刨一刨", "工作状态-刨地忙碌"}
+SMOOTH_LOOP_RATES = dict.fromkeys(
+    (*LOCAL_MOTIONS, *GAIT_MOTIONS, *BODY_MOTIONS, *BALANCE_MOTIONS, *DIG_MOTIONS, "摇尾巴", "坐下歪头"), 24
+)
+MOTION_MASTERS = SOURCE / "motion-masters"
 GROUND = int(H * 0.88)
 
 # 各姿势在画布上的目标高度（相对 H），脚底对齐 GROUND。
@@ -57,7 +87,7 @@ def _is_cream(r: np.ndarray, g: np.ndarray, b: np.ndarray) -> np.ndarray:
     return (lum > 70) & (r > 80) & (g > 60) & (r + g > b * 1.6)
 
 
-def key_dark_background(im: Image.Image, luma_thr: float = 36.0) -> Image.Image:
+def key_dark_background(im: Image.Image, luma_thr: float = 36.0, *, keep_low_nose: bool = False) -> Image.Image:
     im = im.convert("RGBA")
     arr = np.array(im)
     rgb = arr[..., :3].astype(np.float32)
@@ -116,6 +146,13 @@ def key_dark_background(im: Image.Image, luma_thr: float = 36.0) -> Image.Image:
     near_bg[:, :-1] |= bg[:, 1:]
     bg |= paw_zone & (near_bg | bg)
 
+    if keep_low_nose:
+        # These two plates have a dark nose almost touching the ground. The
+        # background flood would otherwise reach it through the mouth shadow.
+        xx = np.arange(w)[None, :] * (640 / w)
+        yy = yy * (640 / h)
+        bg[((xx - 244) / 39)**2 + ((yy - 504) / 31)**2 <= 1] = False
+
     fg = ~bg
     mask = (fg.astype(np.uint8) * 255)
     solid = np.array(Image.fromarray(mask).filter(ImageFilter.MinFilter(3)))
@@ -169,7 +206,7 @@ def load_pose(path: Path) -> Image.Image:
         a = np.array(im)
         if (a[..., 3] == 0).mean() > 0.2:
             return clean_reference_alpha(im)
-    return key_dark_background(im)
+    return key_dark_background(im, keep_low_nose=path.stem in ("mido-dig", "mido-sniff"))
 
 
 def crop_transparent(im: Image.Image, pad: int = 8) -> Image.Image:
@@ -408,69 +445,6 @@ def sleep_rest(bank: PoseBank) -> Image.Image:
 
 # ---------- 动画 ----------
 
-def anim_idle(bank: PoseBank, t: float) -> Image.Image:
-    blink = 0.0
-    phase = (t * 2) % 1.0
-    if 0.72 < phase < 0.86:
-        blink = math.sin(((phase - 0.72) / 0.14) * math.pi)
-    return render(
-        bank,
-        {"sit": 1.0 - blink, "blink": blink},
-        breath=math.sin(t * 2 * math.pi),
-        angle=math.sin(t * 2 * math.pi) * 0.6,
-    )
-
-
-def anim_look(bank: PoseBank, t: float) -> Image.Image:
-    if t < 0.22:
-        k = ease(t / 0.22)
-        w = {"sit": 1 - k, "look_l": k}
-    elif t < 0.40:
-        k = ease((t - 0.22) / 0.18)
-        w = {"look_l": 1 - k, "sit": k}
-    elif t < 0.70:
-        k = ease((t - 0.40) / 0.30)
-        w = {"sit": 1 - k, "look_r": k}
-    else:
-        k = ease((t - 0.70) / 0.30)
-        w = {"look_r": 1 - k, "sit": k}
-    return render(bank, w, breath=math.sin(t * 2 * math.pi) * 0.4)
-
-
-def anim_lifted(bank: PoseBank, t: float) -> Image.Image:
-    # 底板本身已是腾空姿势，只做小幅晃动，避免抬太高裁掉头顶。
-    wobble = math.sin(t * 4 * math.pi)
-    return R(bank, "held", lift=0.18 + wobble * 0.06, angle=wobble * 3, breath=wobble * 0.3)
-
-
-def anim_hop(bank: PoseBank, t: float) -> Image.Image:
-    cycle = (t * 2) % 1.0
-    if cycle < 0.18:
-        k = cycle / 0.18
-        return R(bank, "sit", squat=ease(k) * 0.9, breath=-0.4)
-    if cycle < 0.70:
-        k = (cycle - 0.18) / 0.52
-        lift = math.sin(k * math.pi)
-        # 腾空用 hop 底板，并限制抬升，防止裁头。
-        return R(bank, "hop", lift=min(0.55, lift * 0.7), angle=math.sin(k * math.pi) * 2)
-    k = (cycle - 0.70) / 0.30
-    return R(bank, "sit", squat=(1 - ease(k)) * 0.5)
-
-
-def anim_trot(bank: PoseBank, t: float) -> Image.Image:
-    # 两张对侧/近似对侧跑姿交替，再加一点步态起伏，不是只会上下弹。
-    bounce = abs(math.sin(t * 4 * math.pi))
-    pose = "trot" if (t * 4) % 2 < 1 else "trot2"
-    return R(
-        bank,
-        pose,
-        lift=0.04 + bounce * 0.08,
-        x_shift=math.sin(t * 4 * math.pi) * 0.02,
-        angle=math.sin(t * 4 * math.pi) * 2,
-        breath=bounce * 0.2,
-    )
-
-
 def anim_stretch(bank: PoseBank, t: float) -> Image.Image:
     # 坐 → 半鞠躬 → 全伸懒腰 → 半鞠躬 → 坐，硬切相近形体，不对叠残影。
     if t < 0.12:
@@ -523,82 +497,6 @@ def anim_spin(bank: PoseBank, t: float) -> Image.Image:
     return R(bank, poses[idx], lift=0.04, x_shift=math.sin((idx + local) / len(poses) * 2 * math.pi) * 0.03, breath=0.15)
 
 
-def anim_dig(bank: PoseBank, t: float) -> Image.Image:
-    shake = math.sin(t * 10 * math.pi)
-    return R(bank, "dig", angle=shake * 3, x_shift=shake * 0.008, squat=0.12 + 0.08 * abs(shake), breath=abs(shake) * 0.25)
-
-
-def anim_dig_busy(bank: PoseBank, t: float) -> Image.Image:
-    # 比日常「刨一刨」更快、左右挪动更大，避免和工作槽共用同一段片子。
-    shake = math.sin(t * 14 * math.pi)
-    wander = math.sin(t * 2 * math.pi) * 0.035
-    return R(bank, "dig", angle=shake * 4, x_shift=wander + shake * 0.01, squat=0.18 + 0.1 * abs(shake), breath=abs(shake) * 0.3)
-
-
-def anim_basket(bank: PoseBank, t: float) -> Image.Image:
-    return R(bank, "basket", breath=math.sin(t * 2 * math.pi) * 0.35, angle=math.sin(t * 2 * math.pi) * 1.2)
-
-
-def anim_bell(bank: PoseBank, t: float) -> Image.Image:
-    return R(bank, "bell", breath=math.sin(t * 4 * math.pi) * 0.35, angle=math.sin(t * 4 * math.pi) * 2)
-
-
-def anim_bone(bank: PoseBank, t: float) -> Image.Image:
-    return R(bank, "bone", breath=math.sin(t * 2 * math.pi) * 0.3)
-
-
-def anim_sniff(bank: PoseBank, t: float) -> Image.Image:
-    shake = math.sin(t * 5 * math.pi)
-    return R(bank, "sniff", angle=shake * 2, x_shift=shake * 0.02, breath=0.2)
-
-
-def anim_bowl(bank: PoseBank, t: float) -> Image.Image:
-    return R(bank, "bowl", breath=math.sin(t * 2 * math.pi) * 0.2, angle=math.sin(t * 1.5 * math.pi) * 1.5)
-
-
-def anim_sad_bowl(bank: PoseBank, t: float) -> Image.Image:
-    return R(bank, "sad_bowl", breath=math.sin(t * 2 * math.pi) * 0.15)
-
-
-def anim_whisper_tilt(bank: PoseBank, t: float) -> Image.Image:
-    return R(bank, "head_tilt", breath=math.sin(t * 4 * math.pi) * 0.35, angle=2 + math.sin(t * 4 * math.pi) * 1.5)
-
-
-def anim_whisper_talk(bank: PoseBank, t: float) -> Image.Image:
-    # 说话口型 + 偶尔切到摇尾，和「歪头咕哝」「摇尾汇报」区分开。
-    pose = "talk" if (t * 4) % 2 < 1.2 else "wag_r"
-    return R(bank, pose, breath=math.sin(t * 6 * math.pi) * 0.3)
-
-
-def anim_think(bank: PoseBank, t: float) -> Image.Image:
-    return R(bank, "think", breath=math.sin(t * 2 * math.pi) * 0.2)
-
-
-def anim_report(bank: PoseBank, t: float) -> Image.Image:
-    # 汇报：摇尾坐姿循环，不用铃、不叼骨头、不只是说话口型。
-    pose = "wag_r" if (t * 3) % 2 < 1 else "wag_l"
-    return R(bank, pose, breath=math.sin(t * 4 * math.pi) * 0.3)
-
-
-def anim_wait(bank: PoseBank, t: float) -> Image.Image:
-    pose = "look_l" if (t * 1.4) % 1.0 < 0.5 else "look_r"
-    return R(bank, pose, breath=math.sin(t * 2 * math.pi) * 0.15)
-
-
-def anim_success(bank: PoseBank, t: float) -> Image.Image:
-    # 与点击欢跳区分：跳完落到摇尾得意，而不是直接坐回。
-    if t < 0.22:
-        return R(bank, "sit", squat=ease(t / 0.22) * 0.9)
-    if t < 0.70:
-        k = (t - 0.22) / 0.48
-        return R(bank, "hop", lift=min(0.5, math.sin(k * math.pi) * 0.65))
-    return R(bank, "wag_r", breath=math.sin(((t - 0.70) / 0.30) * math.pi) * 0.4)
-
-
-def anim_sad(bank: PoseBank, t: float) -> Image.Image:
-    return R(bank, "sad", breath=math.sin(t * 2 * math.pi) * 0.15)
-
-
 def anim_sleep_start(bank: PoseBank, t: float) -> Image.Image:
     # 坐 → 困倦坐（可混合，形体接近）→ 趴前腿 → 近睡 → 趴睡静止帧。全程不改整狗透明度。
     if t < 0.16:
@@ -613,13 +511,6 @@ def anim_sleep_start(bank: PoseBank, t: float) -> Image.Image:
     if t < 0.80:
         return R(bank, "lie_mid")
     return sleep_rest(bank)
-
-
-def anim_sleep_loop(bank: PoseBank, t: float) -> Image.Image:
-    # t=0 必须是静止趴睡，末帧由 sequence 再贴回首帧，保证像素级对齐。
-    if t == 0:
-        return sleep_rest(bank)
-    return R(bank, "sleep", breath=math.sin(t * 2 * math.pi) * 0.55, angle=math.sin(t * 2 * math.pi) * 0.3)
 
 
 def anim_sleep_end(bank: PoseBank, t: float) -> Image.Image:
@@ -637,32 +528,32 @@ def anim_sleep_end(bank: PoseBank, t: float) -> Image.Image:
 
 
 ANIMATIONS: list[tuple[str, float, bool, object]] = [
-    ("待机呼吸", 2.0, True, anim_idle),
-    ("转转头", 2.6, True, anim_look),
-    ("被抱起", 2.0, True, anim_lifted),
-    ("点击回应-摇尾欢跳", 2.0, True, anim_hop),
-    ("小步跑", 2.0, True, anim_trot),
+    ("待机呼吸", 2.0, True, partial(LOCAL_MOTIONS["待机呼吸"], shadow=add_shadow)),
+    ("转转头", 32 / FPS, True, partial(LOCAL_MOTIONS["转转头"], shadow=add_shadow)),
+    ("被抱起", 25 / FPS, True, partial(dog_body_motion.held, shadow=add_shadow, affine=affine_about)),
+    ("点击回应-摇尾欢跳", 25 / FPS, True, partial(dog_gait_motion.jump_frame, shadow=add_shadow)),
+    ("小步跑", 25 / FPS, True, partial(dog_gait_motion.run_frame, shadow=add_shadow)),
     ("伸懒腰", 2.4, True, anim_stretch),
     ("摇尾巴", 2 + 1 / FPS, True, anim_wag),
     ("坐下歪头", 2 + 1 / FPS, True, anim_sit_tilt),
     ("转圈追尾巴", 2.2, True, anim_spin),
-    ("刨一刨", 2.0, True, anim_dig),
-    ("余额-骨头满篮", 2.0, True, anim_basket),
-    ("余额-摇铃得意", 2.0, True, anim_bell),
-    ("余额-叼着骨头", 2.0, True, anim_bone),
-    ("余额-四处嗅寻", 2.0, True, anim_sniff),
-    ("余额-空碗张望", 2.0, True, anim_bowl),
-    ("余额-可怜巴巴", 2.0, True, anim_sad_bowl),
-    ("碎碎念-歪头咕哝", 2.0, True, anim_whisper_tilt),
-    ("碎碎念-摇尾说话", 2.0, True, anim_whisper_talk),
-    ("工作状态-歪头思索", 2.0, True, anim_think),
-    ("工作状态-刨地忙碌", 2.0, True, anim_dig_busy),
-    ("工作状态-摇尾汇报", 2.0, True, anim_report),
-    ("工作状态-坐等", 2.0, True, anim_wait),
-    ("工作状态-欢跳成功", 2.0, True, anim_success),
-    ("工作状态-垂耳失落", 2.0, True, anim_sad),
+    ("刨一刨", 2.0, True, None),
+    ("余额-骨头满篮", 25 / FPS, False, None),
+    ("余额-摇铃得意", 25 / FPS, False, None),
+    ("余额-叼着骨头", 25 / FPS, False, None),
+    ("余额-四处嗅寻", 25 / FPS, False, None),
+    ("余额-空碗张望", 25 / FPS, False, None),
+    ("余额-可怜巴巴", 25 / FPS, False, None),
+    ("碎碎念-歪头咕哝", 25 / FPS, True, partial(LOCAL_MOTIONS["碎碎念-歪头咕哝"], shadow=add_shadow)),
+    ("碎碎念-摇尾说话", 25 / FPS, True, partial(LOCAL_MOTIONS["碎碎念-摇尾说话"], shadow=add_shadow)),
+    ("工作状态-歪头思索", 25 / FPS, True, partial(LOCAL_MOTIONS["工作状态-歪头思索"], shadow=add_shadow)),
+    ("工作状态-刨地忙碌", 2.0, True, None),
+    ("工作状态-摇尾汇报", 25 / FPS, True, partial(LOCAL_MOTIONS["工作状态-摇尾汇报"], shadow=add_shadow)),
+    ("工作状态-坐等", 25 / FPS, True, partial(LOCAL_MOTIONS["工作状态-坐等"], shadow=add_shadow)),
+    ("工作状态-欢跳成功", 25 / FPS, True, partial(dog_gait_motion.jump_frame, shadow=add_shadow, success=True)),
+    ("工作状态-垂耳失落", 25 / FPS, True, partial(LOCAL_MOTIONS["工作状态-垂耳失落"], shadow=add_shadow)),
     ("睡觉-入睡", 2.8, False, anim_sleep_start),
-    ("睡觉-循环", 2.0, True, anim_sleep_loop),
+    ("睡觉-循环", 25 / FPS, False, partial(dog_body_motion.sleeping, shadow=add_shadow)),
     ("睡觉-醒来", 2.8, False, anim_sleep_end),
 ]
 
@@ -678,19 +569,25 @@ def sequence(bank: PoseBank, fn, seconds: float, loop: bool, *, fps: int = FPS, 
     return frames
 
 
-def encode_webm(frames: list[Image.Image], dest: Path, fps: int = FPS, *, crf: int | None = None) -> None:
+def encode_webm(frames: list[Image.Image], dest: Path, fps: int = FPS, *, crf: int | None = None,
+                cpu_used: int = 3, sleep_seam: bool = False) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(prefix="dsh-dog-"))
     try:
         for i, im in enumerate(frames):
             im.save(tmp / f"{i:04d}.png")
         quality = ["-b:v", "900k"] if crf is None else ["-b:v", "0", "-crf", str(crf)]
+        seam = []
+        if sleep_seam:
+            # Encode the two identical sleep poses as keyframes, matching the adjacent clips.
+            seam = ["-lag-in-frames", "0", "-g", "240", "-aq-mode", "0",
+                    "-force_key_frames", f"0,{(len(frames) - 1) / fps:.7f}"]
         cmd = [
             "ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp / "%04d.png"),
             "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0",
-            *quality, "-deadline", "good", "-cpu-used", "3", "-an", str(dest),
+            *quality, "-deadline", "good", "-cpu-used", str(cpu_used), *seam, "-an", str(dest),
         ]
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8", errors="replace")
         if proc.returncode != 0:
             sys.stderr.write(proc.stderr[-4000:])
             raise SystemExit(f"ffmpeg failed for {dest.name} (exit {proc.returncode})")
@@ -710,7 +607,7 @@ def encode_gif(frames: list[Image.Image], dest: Path, fps: int = FPS) -> None:
             "[s1][p]paletteuse=new=1:alpha_threshold=128"
         )
         cmd = ["ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp / "%04d.png"), "-vf", filt, "-loop", "0", str(dest)]
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8", errors="replace")
         if proc.returncode != 0:
             sys.stderr.write(proc.stderr[-2000:])
             print("warn: preview gif failed", dest.name, file=sys.stderr)
@@ -768,13 +665,35 @@ def main() -> None:
     # 先把睡觉三段算出来，检查对齐和入睡中段不透明。
     preview_frames = None
     sleep_sets: dict[str, list[Image.Image]] = {}
+    from dog_dig_motion import render_digging
+
+    dig_frames = render_digging(MOTION_MASTERS / "dig.webm")
     for name, seconds, loop, fn in ANIMATIONS:
         rate = SMOOTH_LOOP_RATES.get(name, FPS)
-        frames = sequence(bank, fn, seconds, loop, fps=rate, hold_first=name not in SMOOTH_LOOP_RATES)
+        if name in DIG_MOTIONS:
+            frames = dig_frames
+        elif name in BALANCE_MOTIONS:
+            pose = BALANCE_MOTIONS[name]
+            with Image.open(MOTION_MASTERS / f"{pose}-master.png") as master:
+                plate = master.convert("RGBA")
+            count = round(seconds * rate)
+            frames = [dog_balance_motion.render_balance_motion(plate, pose, i / (count - 1)) for i in range(count)]
+        else:
+            frames = sequence(bank, fn, seconds, loop, fps=rate, hold_first=name not in SMOOTH_LOOP_RATES)
         if name.startswith("睡觉-"):
             sleep_sets[name] = frames
         dest = ANIM_DIR / f"{name}.webm"
-        encode_webm(frames, dest, rate, crf=27 if name == "坐下歪头" else None)
+        crf = None
+        if name in GAIT_MOTIONS:
+            crf = 22
+        elif name in DIG_MOTIONS:
+            crf = 26
+        elif name in BALANCE_MOTIONS:
+            crf = 28
+        elif name in LOCAL_MOTIONS or name in BODY_MOTIONS or name == "坐下歪头":
+            crf = 27
+        encode_webm(frames, dest, rate, crf=crf, cpu_used=4 if name in GAIT_MOTIONS else 3,
+                    sleep_seam=name == "睡觉-循环")
         top = _opaque_top(frames[len(frames)//2])
         print(f"  {name}.webm  ({len(frames)} frames, {dest.stat().st_size} bytes, mid-top={top})", flush=True)
         if name == "待机呼吸":

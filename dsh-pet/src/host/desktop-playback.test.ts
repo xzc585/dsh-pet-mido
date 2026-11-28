@@ -4,6 +4,42 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 
 const source = readFileSync(new URL('../../runtime/electron-helper/sprite/playback.js', import.meta.url), 'utf8');
+const inputSource = readFileSync(new URL('../../runtime/electron-helper/sprite/input.js', import.meta.url), 'utf8');
+
+test('持续抱着米豆时抱起动画循环，睡着时保留睡姿', () => {
+  const switches: Array<[string, boolean]> = [];
+  class Sprite {
+    assetRoot = 'dog';
+    sleeping = false;
+    animations = { drag: ['被抱起'] };
+    dragState = { active: true, dragging: false, sx: 0, sy: 0, petX: 10, petY: 10 };
+    dragTrail = [];
+    syncInputBusy() {}
+    startDragFollow() {}
+    switchTo(name: string, once: boolean) {
+      switches.push([name, once]);
+    }
+    playOnce(name: string) {
+      this.switchTo(name, true);
+    }
+    declare onPointerMove: (e: { screenX: number; screenY: number }) => void;
+  }
+  runInNewContext(inputSource, {
+    PetSprite: Sprite,
+    toLocal: (n: number) => n,
+    performance: { now: () => 0 },
+    S: { DRAG_THRESHOLD: 2, pick: (list: string[]) => list[0], trimTrail: (trail: unknown[]) => trail },
+  });
+  Sprite.prototype.syncInputBusy = () => {};
+  const move = { screenX: 10, screenY: 10 };
+  new Sprite().onPointerMove(move);
+  Object.assign(new Sprite(), { assetRoot: 'other' }).onPointerMove(move);
+  Object.assign(new Sprite(), { sleeping: true }).onPointerMove(move);
+  assert.deepEqual(switches, [
+    ['被抱起', false],
+    ['被抱起', true],
+  ]);
+});
 
 class Video extends EventTarget {
   readyState = 0;

@@ -117,7 +117,10 @@ Object.assign(PetSprite.prototype, {
       d.dragging = true;
       // 睡觉：位置照常跟手，但不换拖拽动画——睡姿循环整段归睡觉状态机，顶掉就回不来了。
       if (this.animations.drag.length && !this.sleeping) {
-        this.playOnce(S.pick(this.animations.drag));
+        const name = S.pick(this.animations.drag);
+        // 米豆的抱起动作首尾相接，长按拖拽时持续播放，松手由下方分支恢复动作链。
+        const loop = this.assetRoot === 'dog' && name === '被抱起';
+        this.switchTo(name, !loop);
       }
       this.syncInputBusy(); // 拖拽成立：主进程兜底通道闭嘴（见 inputBusy）
     }
