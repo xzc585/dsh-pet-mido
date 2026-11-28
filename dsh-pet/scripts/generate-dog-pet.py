@@ -28,7 +28,7 @@ ANIM_DIR = OUT_DIR / "dog-animation"
 W, H = 640, 360
 FPS = 12
 # 只提高通过对照的循环片段帧率，同时取消片尾重复的起始帧。
-SMOOTH_LOOP_RATES = {"待机呼吸": 24}
+SMOOTH_LOOP_RATES = {"待机呼吸": 24, "摇尾巴": 24, "坐下歪头": 24}
 GROUND = int(H * 0.88)
 
 # 各姿势在画布上的目标高度（相对 H），脚底对齐 GROUND。
@@ -239,6 +239,11 @@ def ease(t: float) -> float:
     return 0.5 - 0.5 * math.cos(math.pi * min(1.0, max(0.0, t)))
 
 
+def smoothstep(t: np.ndarray) -> np.ndarray:
+    t = np.clip(t, 0, 1)
+    return t * t * (3 - 2 * t)
+
+
 def add_shadow(canvas: Image.Image, lift: float, width_scale: float = 1.0) -> Image.Image:
     if lift > 0.95:
         return canvas
@@ -351,6 +356,50 @@ def R(bank, name, **kw):
     return render(bank, {name: 1}, **kw)
 
 
+def render_sit_motion(
+    bank: PoseBank, *, tilt=0.0, ear_lag=0.0, tail_angle=0.0, tail_sway=(0.0, 0.0)
+) -> Image.Image:
+    sit = bank.plate("sit")
+    move_head = bool(tilt or ear_lag)
+    move_tail = bool(tail_angle or any(tail_sway))
+    if not (move_head or move_tail):
+        return add_shadow(sit, 0)
+
+    # Inverse deformation of the seated pose on a mesh. The neck and tail root
+    # taper to the untouched torso so the paws keep the same contact points.
+    step = 10
+    left, top, right = (0, 0, W) if move_head else (380, 180, 500)
+    bottom = 310 if move_tail else 250
+    x, y = np.meshgrid(np.arange(left, right + 1, step), np.arange(top, bottom + 1, step))
+    head = 1 - smoothstep((y - 179) / 71)
+    head *= 1 - smoothstep((x - 365) / 30) * smoothstep((y - 166) / 28)
+    left_ear = np.exp(-((x - 210) / 30)**2 - ((y - 133) / 37)**2)
+    right_ear = np.exp(-((x - 414) / 30)**2 - ((y - 123) / 37)**2)
+    angle = np.radians(-tilt * head)
+    cos, sin = np.cos(angle), np.sin(angle)
+    dx, dy = x - 319, y - 196
+    source_x = 319 + dx * cos - dy * sin - 0.19 * tilt * head
+    source_y = 196 + dx * sin + dy * cos + 0.88 * ear_lag * (right_ear - left_ear) * head
+
+    tail = smoothstep((x - 388) / 28) * smoothstep((y - 182) / 32) * (1 - smoothstep((y - 287) / 18))
+    angle = np.radians(-tail_angle * tail)
+    cos, sin = np.cos(angle), np.sin(angle)
+    dx, dy = x - 400, y - 276
+    source_x += dx * (cos - 1) - dy * sin + tail_sway[0] * tail
+    source_y += dx * sin + dy * (cos - 1) + tail_sway[1] * tail
+
+    mesh = []
+    for row in range(y.shape[0] - 1):
+        for col in range(x.shape[1] - 1):
+            box = (col * step, row * step, (col + 1) * step, (row + 1) * step)
+            corners = ((row, col), (row + 1, col), (row + 1, col + 1), (row, col + 1))
+            quad = tuple(value[i, j] for i, j in corners for value in (source_x, source_y))
+            mesh.append((box, quad))
+    region = sit.transform((right - left, bottom - top), Image.Transform.MESH, mesh, resample=Image.Resampling.BICUBIC)
+    sit.paste(region, (left, top))
+    return add_shadow(sit, 0)
+
+
 def sleep_rest(bank: PoseBank) -> Image.Image:
     if bank.sleep_rest is None:
         bank.sleep_rest = R(bank, "sleep", breath=0.0)
@@ -436,21 +485,33 @@ def anim_stretch(bank: PoseBank, t: float) -> Image.Image:
 
 
 def anim_wag(bank: PoseBank, t: float) -> Image.Image:
-    # 三张坐姿底板：尾巴在左 / 原位 / 在右，按拍切换，能看见尾巴在摆。
-    phase = (t * 4) % 4  # 每圈 4 拍
-    if phase < 1:
-        name = "wag_l"
-    elif phase < 2:
-        name = "sit"
-    elif phase < 3:
-        name = "wag_r"
-    else:
-        name = "sit"
-    return R(bank, name, breath=math.sin(t * 6 * math.pi) * 0.25)
+    # 摆动从尾根向外放大，尾尖稍晚转向，在切回待机前自然收住。
+    amount = ease(min(t / 0.12, (0.96 - t) / 0.15))
+    phase = math.tau * 2.25 * t
+    return render_sit_motion(
+        bank,
+        tail_angle=18 * amount * math.sin(phase),
+        tail_sway=(-1.5 * amount * math.sin(phase - 0.4), 5 * amount * math.sin(phase - 0.75)),
+    )
+
+
+TILT_KEYFRAMES = (
+    (0.0, 0.0), (0.09, -1.2), (0.32, 13.0), (0.48, 10.8),
+    (0.59, 11.1), (0.87, -0.8), (0.94, 0.0),
+)
+
+
+def sit_tilt_at(t: float) -> float:
+    for (start, a), (end, b) in zip(TILT_KEYFRAMES, TILT_KEYFRAMES[1:]):
+        if t < end:
+            return a + (b - a) * ease((t - start) / (end - start))
+    return 0.0
 
 
 def anim_sit_tilt(bank: PoseBank, t: float) -> Image.Image:
-    return R(bank, "head_tilt", breath=math.sin(t * 2 * math.pi) * 0.3, angle=math.sin(t * 2 * math.pi) * 1.5)
+    tilt = sit_tilt_at(t)
+    ear_lag = sit_tilt_at(t - 0.035) - tilt
+    return render_sit_motion(bank, tilt=tilt, ear_lag=ear_lag)
 
 
 def anim_spin(bank: PoseBank, t: float) -> Image.Image:
@@ -582,8 +643,8 @@ ANIMATIONS: list[tuple[str, float, bool, object]] = [
     ("点击回应-摇尾欢跳", 2.0, True, anim_hop),
     ("小步跑", 2.0, True, anim_trot),
     ("伸懒腰", 2.4, True, anim_stretch),
-    ("摇尾巴", 2.0, True, anim_wag),
-    ("坐下歪头", 2.0, True, anim_sit_tilt),
+    ("摇尾巴", 2 + 1 / FPS, True, anim_wag),
+    ("坐下歪头", 2 + 1 / FPS, True, anim_sit_tilt),
     ("转圈追尾巴", 2.2, True, anim_spin),
     ("刨一刨", 2.0, True, anim_dig),
     ("余额-骨头满篮", 2.0, True, anim_basket),
@@ -617,16 +678,17 @@ def sequence(bank: PoseBank, fn, seconds: float, loop: bool, *, fps: int = FPS, 
     return frames
 
 
-def encode_webm(frames: list[Image.Image], dest: Path, fps: int = FPS) -> None:
+def encode_webm(frames: list[Image.Image], dest: Path, fps: int = FPS, *, crf: int | None = None) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(prefix="dsh-dog-"))
     try:
         for i, im in enumerate(frames):
             im.save(tmp / f"{i:04d}.png")
+        quality = ["-b:v", "900k"] if crf is None else ["-b:v", "0", "-crf", str(crf)]
         cmd = [
             "ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp / "%04d.png"),
             "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0",
-            "-b:v", "900k", "-deadline", "good", "-cpu-used", "3", "-an", str(dest),
+            *quality, "-deadline", "good", "-cpu-used", "3", "-an", str(dest),
         ]
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if proc.returncode != 0:
@@ -712,7 +774,7 @@ def main() -> None:
         if name.startswith("睡觉-"):
             sleep_sets[name] = frames
         dest = ANIM_DIR / f"{name}.webm"
-        encode_webm(frames, dest, rate)
+        encode_webm(frames, dest, rate, crf=27 if name == "坐下歪头" else None)
         top = _opaque_top(frames[len(frames)//2])
         print(f"  {name}.webm  ({len(frames)} frames, {dest.stat().st_size} bytes, mid-top={top})", flush=True)
         if name == "待机呼吸":
