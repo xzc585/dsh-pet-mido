@@ -74,20 +74,26 @@ Object.assign(PetSprite.prototype, {
     const more = S.buildMoreBranch(this.menuItems);
     const tree = tools.concat(S.buildMenuTree(this.animations), tail, more ? [more] : []);
     if (!tree.length) return;
+    // 记录鼠标在本体内的落点；扩窗后把它换回新的窗口局部坐标。
+    const x = e.clientX - this.winOffset.x;
+    const y = e.clientY - this.winOffset.y;
     this.menuOpen = true;
+    this.refreshPopupBounds();
     this.setInteractive(true); // 菜单是窗口内 DOM：悬停期间整窗保持可交互，关闭后恢复命中区穿透
     this.syncInputBusy();
     window.__dshPetDebug.menuOpen = true;
     const m = S.mountContextMenu({
       tree,
-      x: e.clientX,
-      y: e.clientY,
+      x: x + this.winOffset.x,
+      y: y + this.winOffset.y,
       // 只允许在「窗口 ∩ 工作区」内显示：宠物贴边时外扩余量伸出屏幕，菜单走进那里会被 OS 裁掉
       clamp: this.visibleClampRect(),
       onAction: (leaf) => this.onMenuAction(leaf),
       // 菜单被点外/Esc 关闭（非菜单项路径）：同样复位可交互标记，恢复命中区判定
       onClose: () => {
         this.menuOpen = false;
+        this.menuClose = null;
+        this.refreshPopupBounds();
         window.__dshPetDebug.menuOpen = false;
         this.syncInputBusy();
         if (!this.inputBusy()) this.setInteractive(false);
@@ -327,6 +333,9 @@ Object.assign(PetSprite.prototype, {
     }
     // 语音接口同样走 bridge 地址；念不念由 say.voiceTo 决定（本端身份启动时已 setSurface('desktop')）
     S.setVoiceBase(BASE);
+    this.chatOpen = true;
+    this.syncInputBusy();
+    this.refreshPopupBounds();
     const m = S.mountChatDialog({
       petId: this.pet.id,
       baseUrl: BASE + '/chat',
@@ -339,8 +348,8 @@ Object.assign(PetSprite.prototype, {
       ...(encoded ? { initialEncoded: encoded } : {}),
       // 截屏：主进程取宠物所在屏的一帧（JPEG base64），形状与浏览器侧一致
       capture: () => this.captureEncoded(),
-      // 弹窗同菜单：只允许在「窗口 ∩ 工作区」内显示，贴边时不被屏幕裁掉
-      clamp: this.visibleClampRect(),
+      // 弹窗重新测量时取当前可见空间，兼容原生窗口或显示器变化。
+      clamp: () => this.visibleClampRect(),
       onSent: () => {
         // 发送成功：回复已写进 S → 版本号变 → 挂着的长轮询立刻返回并弹气泡
         console.info('[dsh-pet] 对话已发送 pet=' + this.pet.id);
@@ -348,13 +357,13 @@ Object.assign(PetSprite.prototype, {
       onClose: () => {
         this.chatMount = null;
         this.chatOpen = false;
+        this.refreshPopupBounds();
         window.__dshPetDebug.chatOpen = false;
-        this.syncInputBusy(); // 弹窗关：交还常规判定（菜单还开着的话仍保持忙）
-        if (!this.menuOpen) this.setInteractive(false); // 无菜单时恢复命中区穿透
+        this.syncInputBusy();
+        if (!this.inputBusy()) this.setInteractive(false);
       },
     });
     this.chatMount = m;
-    this.chatOpen = true; // 穿透守卫：弹窗期间整窗保持可交互
     window.__dshPetDebug.chatOpen = true;
     this.syncInputBusy();
     this.setInteractive(true);
@@ -391,6 +400,7 @@ Object.assign(PetSprite.prototype, {
     this.todoOpen = true;
     window.__dshPetDebug.todoOpen = true;
     this.renderBubble();
+    this.refreshPopupBounds();
     this.syncInputBusy();
     this.setInteractive(true);
   },
@@ -403,7 +413,9 @@ Object.assign(PetSprite.prototype, {
     this.todoPanel = null;
     this.todoOpen = false;
     window.__dshPetDebug.todoOpen = false;
+    this.bubble.classList.remove('is-below-pet', 'is-over-pet');
     this.renderBubble();
+    this.refreshPopupBounds();
     if (!this.menuOpen && !this.chatOpen) this.setInteractive(false);
   },
 

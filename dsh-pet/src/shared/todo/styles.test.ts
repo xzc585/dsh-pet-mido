@@ -37,6 +37,14 @@ describe('todoPanelTopMarginPx —— 桌面窗口上边距', () => {
     assert.ok(panel >= panelHeightPx(font, 200) - 200 * BUBBLE_OVERLAP_RATIO, '上边距应覆盖面板减去底边探出的部分');
   });
 
+  test('200 px 和更小的宠物也为至少 14 px 的可编辑面板预留高度', () => {
+    const m = TODO_PANEL_METRICS;
+    const calendarHeight = (m.head + m.form + m.calendar) * 14;
+    for (const size of [100, 200]) {
+      assert.ok(todoPanelTopMarginPx(DEFAULT_FONT, size) >= Math.ceil(calendarHeight - size * BUBBLE_OVERLAP_RATIO));
+    }
+  });
+
   test('font 缺失：按默认口径换算，不产出 NaN 或负数', () => {
     const px = todoPanelTopMarginPx(undefined, 462);
     assert.ok(Number.isFinite(px) && px > 0, `实得 ${px}`);
@@ -44,9 +52,9 @@ describe('todoPanelTopMarginPx —— 桌面窗口上边距', () => {
 });
 
 describe('TODO_CSS —— 尺寸锚字号', () => {
-  test('字号与宽度都从 --f 派生，不再写死像素', () => {
+  test('字号与宽度可以随用户设置放大，小字号有可操作的下限', () => {
     assert.ok(TODO_CSS.includes('var(--f)'), '面板尺寸应锚 --f');
-    assert.ok(!TODO_CSS.includes('font-size:13px'), '不应再写死 13px 字号');
-    assert.ok(!TODO_CSS.includes('width:308px'), '不应再写死 308px 宽度');
+    assert.ok(TODO_CSS.includes('--t:max(14px,'));
+    assert.ok(TODO_CSS.includes('width:max(320px,'));
   });
 });

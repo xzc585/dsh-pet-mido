@@ -22,7 +22,14 @@ const globals = globalThis as unknown as Record<string, unknown>;
 globals.PetSprite = function PetSprite() {};
 globals.CONFIG = { isWindowClampedToWorkArea: false };
 globals.WORK_AREAS = [AREA];
-globals.S = { resolveRect, fitWindowInArea, MIN_REACHABLE_PX };
+globals.S = {
+  resolveRect,
+  fitWindowInArea,
+  MIN_REACHABLE_PX,
+  BUBBLE_OVERLAP_RATIO: 0.108,
+  todoPanelWidthPx: () => 320,
+  todoPanelTopMarginPx: () => 335,
+};
 globals.VIEW = { x: 0, y: 0, w: 1920, h: 1080 };
 globals.toScreen = (v: number): number => v; // 上报单位换算在这里取 1:1，断言才看得懂
 globals.window = { __dshPetDebug: {} };
@@ -59,6 +66,9 @@ interface Sprite {
   sideAllow: number;
   /** 飞行中的实时状态；静止时为 null/undefined。 */
   throwState?: { vx: number; vy: number } | null;
+  menuOpen?: boolean;
+  chatOpen?: boolean;
+  todoOpen?: boolean;
   fitWindow(): WindowFit;
   reportWindow(fit: WindowFit): void;
 }
@@ -119,6 +129,60 @@ describe('sprite/window-fit.js —— 窗口落位接线', () => {
     assert.equal(fit.y + fit.offsetY, 782.5, '本体底缘 = 782.5 + 247.5 = 1030，离任务栏 10（配置值）');
     assert.ok(fit.x + fit.width <= AREA.width, '窗口不得越出工作区右缘（否则又被 WM 钳一次）');
     assert.ok(fit.y + fit.height <= AREA.height, '窗口不得越出工作区下缘');
+  });
+
+  test('小桌宠打开待办时给日历留出空间、贴角时整窗在工作区内，关闭后恢复普通尺寸', () => {
+    setWindowClampedToWorkArea(false);
+    const sprite = makeSprite();
+    Object.assign(sprite, {
+      size: 100,
+      halfW: 50,
+      height: 56.25,
+      halfH: 28.125,
+      winH: 61,
+      margin: { l: 50, r: 50, t: 67, b: 50 },
+      hitRect: { x: 34, y: 10, w: 32, h: 48 },
+      pos: { x: AREA.width - 101, y: 2 },
+    });
+    const resting = sprite.fitWindow();
+    assert.equal(resting.width, 200);
+    assert.equal(resting.height, 178);
+    sprite.todoOpen = true;
+    const shown = sprite.fitWindow();
+    assert.ok(shown.width >= 336, '待办 320px 加上窗口内留白');
+    assert.ok(shown.height >= 425, '日历全高加上身体下面的摆放空间');
+    assert.ok(shown.x >= AREA.x && shown.x + shown.width <= AREA.width);
+    assert.ok(shown.y >= AREA.y && shown.y + shown.height <= AREA.height);
+    assert.equal(shown.x + shown.offsetX, sprite.pos.x);
+    assert.equal(shown.y + shown.offsetY, sprite.pos.y);
+    sprite.todoOpen = false;
+    assert.deepEqual(sprite.fitWindow(), resting);
+  });
+
+  test('小桌宠右键菜单与对话在相同屏幕位置展开，互不依赖待办打开', () => {
+    setWindowClampedToWorkArea(false);
+    const sprite = makeSprite();
+    Object.assign(sprite, {
+      size: 100,
+      halfW: 50,
+      height: 56.25,
+      halfH: 28.125,
+      winH: 61,
+      margin: { l: 50, r: 50, t: 67, b: 50 },
+      hitRect: { x: 34, y: 10, w: 32, h: 48 },
+      pos: { x: 2, y: AREA.height - 63 },
+    });
+    sprite.chatOpen = true;
+    const chat = sprite.fitWindow();
+    assert.ok(chat.width >= 348 && chat.height >= 375, '完整输入框与操作栏');
+    assert.equal(chat.x + chat.offsetX, sprite.pos.x);
+    assert.equal(chat.y + chat.offsetY, sprite.pos.y);
+    sprite.chatOpen = false;
+    sprite.menuOpen = true;
+    const menu = sprite.fitWindow();
+    assert.ok(menu.width >= 490 && menu.height >= 380, '常见三级级联展开余量');
+    assert.equal(menu.x + menu.offsetX, sprite.pos.x);
+    assert.equal(menu.y + menu.offsetY, sprite.pos.y);
   });
 
   test('上报主进程：一次捎带窗口矩形 + 本体盒 + 命中区偏移 → 参数次序即协议', () => {

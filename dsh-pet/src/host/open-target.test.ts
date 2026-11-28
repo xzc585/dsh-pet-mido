@@ -96,9 +96,14 @@ test('渲染端从窗口参数决定三种文案，缺参数默认打开网站',
   ];
   for (const [search, expected] of cases) {
     let firstItem: { label: string; action: string } | undefined;
+    let menuPoint: { x: number; y: number } | undefined;
     class PetSprite {
       dragState = {};
       animations = {};
+      winOffset = { x: 16, y: 32 };
+      refreshPopupBounds() {
+        this.winOffset = { x: 48, y: 64 };
+      }
       stopThrow() {}
       stopMove() {}
       setInteractive() {}
@@ -122,15 +127,25 @@ test('渲染端从窗口参数决定三种文案，缺参数默认打开网站',
           buildMoreBranch() {},
           buildMenuTree: () => [],
           displayMenuBranch: () => ({}),
-          mountContextMenu: ({ tree }: { tree: Array<{ label: string; action: string }> }) => {
+          mountContextMenu: ({
+            tree,
+            x,
+            y,
+          }: {
+            tree: Array<{ label: string; action: string }>;
+            x: number;
+            y: number;
+          }) => {
             firstItem = tree[0];
+            menuPoint = { x, y };
             return { close() {} };
           },
         },
       },
     });
-    new PetSprite().onContextMenu({ preventDefault() {} });
+    new PetSprite().onContextMenu({ clientX: 20, clientY: 36, preventDefault() {} });
     assert.equal(firstItem?.label, expected);
     assert.equal(firstItem?.action, 'open-site');
+    assert.deepEqual(menuPoint, { x: 52, y: 68 }, '扩窗后保持原鼠标落点');
   }
 });

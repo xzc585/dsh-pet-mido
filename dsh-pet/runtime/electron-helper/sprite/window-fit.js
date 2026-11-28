@@ -7,6 +7,10 @@
  */
 'use strict';
 
+const POPUP_EDGE_GAP = 8;
+const MENU_WINDOW_SIZE = { width: 620, height: 480 };
+const CHAT_WINDOW_SIZE = { width: 400, height: 440 };
+
 Object.assign(PetSprite.prototype, {
   /**
    * 越界允许量：命中区至少留 MIN_REACHABLE_PX 在屏幕内，其余部分可以挂到屏幕外。
@@ -30,12 +34,37 @@ Object.assign(PetSprite.prototype, {
    * @returns 窗口内容区（屏幕坐标系，CSS 像素）x/y/width/height 与本体在窗口内的偏移 offsetX/offsetY。
    */
   fitWindow() {
-    const width = this.size + this.margin.l + this.margin.r;
-    const height = this.winH + this.margin.t + this.margin.b;
-    // 工作区取本体中心所在那块屏：窗口跨屏时按本体所在屏钳，与「窗口被关在单屏工作区内」一致
-    const area = CONFIG.isWindowClampedToWorkArea
-      ? S.resolveRect(WORK_AREAS, this.pos.x + this.halfW, this.pos.y + this.halfH)
-      : undefined;
+    const baseWidth = this.size + this.margin.l + this.margin.r;
+    const baseHeight = this.winH + this.margin.t + this.margin.b;
+    const popupOpen = this.menuOpen || this.chatOpen || this.todoOpen;
+    // 系统窗口可以探出屏幕，操作面板打开时要让原生窗口留在本体所在的工作区。
+    const area =
+      CONFIG.isWindowClampedToWorkArea || popupOpen
+        ? S.resolveRect(WORK_AREAS, this.pos.x + this.halfW, this.pos.y + this.halfH)
+        : undefined;
+    let width = baseWidth;
+    let height = baseHeight;
+    let insetY = this.margin.t;
+    if (this.menuOpen) {
+      width = Math.max(width, MENU_WINDOW_SIZE.width);
+      height = Math.max(height, MENU_WINDOW_SIZE.height);
+    }
+    if (this.chatOpen) {
+      width = Math.max(width, CHAT_WINDOW_SIZE.width);
+      height = Math.max(height, CHAT_WINDOW_SIZE.height);
+    }
+    if (this.todoOpen) {
+      const topMargin = S.todoPanelTopMarginPx(this.font, this.size);
+      const panelHeight = topMargin + this.size * S.BUBBLE_OVERLAP_RATIO;
+      width = Math.max(width, S.todoPanelWidthPx(this.font, this.size) + 2 * POPUP_EDGE_GAP);
+      height = Math.max(height, this.winH + panelHeight + 3 * POPUP_EDGE_GAP);
+      insetY = Math.max(insetY, topMargin + POPUP_EDGE_GAP);
+    }
+    if (popupOpen && area) {
+      width = Math.min(Math.ceil(width), area.width);
+      height = Math.min(Math.ceil(height), area.height);
+    }
+    this.windowLayout = { width, height };
     const fit = S.fitWindowInArea({
       bodyX: this.pos.x,
       bodyY: this.pos.y,
@@ -44,13 +73,42 @@ Object.assign(PetSprite.prototype, {
       bodyWidth: this.size,
       // 纵向是「精灵总高」（含脚底透明垫），不是视频高：偏移上限按精灵算才对得上窗口尺寸
       bodyHeight: this.winH,
-      insetX: this.margin.l,
-      insetY: this.margin.t,
+      insetX: this.margin.l + (width - baseWidth) / 2,
+      insetY,
       reach: this.reachInset(),
       area,
     });
     this.applyWinOffset(fit.offsetX, fit.offsetY);
     return { x: fit.x, y: fit.y, width, height, offsetX: fit.offsetX, offsetY: fit.offsetY };
+  },
+
+  refreshPopupBounds() {
+    if (!this.ac?.signal.aborted) this.sendBounds(this.pos.x, this.pos.y);
+  },
+
+  /** 待办优先贴在头顶，贴屏幕顶边时放到本体下方。内容高度变动后重新落位。 */
+  layoutTodoPopup() {
+    if (!this.todoOpen) return;
+    const area = this.visibleClampRect();
+    if (!area) return;
+    const bubble = this.bubble;
+    const gap = POPUP_EDGE_GAP;
+    bubble.style.setProperty('--desktop-todo-max-width', Math.max(1, area.w - 2 * gap) + 'px');
+    bubble.style.setProperty('--dsh-pet-todo-max-height', Math.max(1, area.h - 2 * gap) + 'px');
+    const { width, height } = bubble.getBoundingClientRect();
+    const center = this.winOffset.x + this.halfW;
+    const left = Math.max(area.x + gap, Math.min(center - width / 2, area.x + area.w - width - gap));
+    const above = this.winOffset.y + this.size * S.BUBBLE_OVERLAP_RATIO - height;
+    const below = this.winOffset.y + this.winH + gap;
+    const minTop = area.y + gap;
+    const maxTop = Math.max(minTop, area.y + area.h - height - gap);
+    const useBelow = above < minTop && below <= maxTop;
+    const top = useBelow ? Math.max(minTop, below) : Math.max(minTop, Math.min(above, maxTop));
+    bubble.style.setProperty('--desktop-todo-left', left - this.winOffset.x + 'px');
+    bubble.style.setProperty('--desktop-todo-top', top - this.winOffset.y + 'px');
+    bubble.style.setProperty('--desktop-todo-tail-x', Math.max(gap, Math.min(center - left, width - gap)) + 'px');
+    bubble.classList.toggle('is-below-pet', useBelow);
+    bubble.classList.toggle('is-over-pet', !useBelow && above < minTop);
   },
 
   /** 本体在窗口内的偏移落到 DOM；逐帧调用，值没变就不写样式。 */

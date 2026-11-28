@@ -59,6 +59,9 @@ const bubbleCss = [
     'transform:translateX(-50%);border:calc(var(--f)*0.3736) solid transparent;' +
     'border-top-color:rgba(255,255,255,.92);border-bottom:none}',
   '.dsh-pet-bubble.is-on{opacity:1}',
+  '.dsh-pet-bubble.dsh-pet-todo-bubble::after{left:var(--dsh-pet-todo-tail-x,50%)}',
+  '.dsh-pet-todo-bubble[data-side="below"]::after{top:calc(var(--f)*-0.3736);bottom:auto;transform:translateX(-50%) rotate(180deg)}',
+  '.dsh-pet-todo-bubble[data-side="overlap"]::after{display:none}',
   // 碎碎念变体：字号缩到余额气泡的 0.75，宽度下限更窄，上限与折行规则相同。
   '.dsh-pet-bubble.dsh-pet-whisper{font-size:calc(var(--f)*0.7473);' +
     'min-width:calc(var(--f)*2.1978);max-width:min(calc(var(--f)*10.989),100%)}',

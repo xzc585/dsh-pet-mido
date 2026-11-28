@@ -18,6 +18,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { runInNewContext } from 'node:vm';
 
 const require = createRequire(import.meta.url);
 const helper = '../../runtime/electron-helper/';
@@ -392,5 +393,63 @@ describe('守卫：渲染端的输入租约必须在位（helper 随包发行，
     const preload = readSource(helper + 'preload.js');
     assert.ok(/setInputBusy\(busy\)/.test(preload), 'preload 必须有 setInputBusy');
     assert.ok(/'pet:input-busy'/.test(preload), 'IPC 频道名必须与 main.js 一致');
+  });
+});
+
+describe('桌面对话输入租约', () => {
+  function chatFixture(todoOpen: boolean) {
+    const order: string[] = [];
+    function PetSprite() {}
+    runInNewContext(readSource(helper + 'sprite/input.js') + readSource(helper + 'sprite/menu.js'), {
+      PetSprite,
+      BASE: 'http://127.0.0.1:3080/dsh-pet-7340',
+      S: {
+        setVoiceBase() {},
+        mountChatDialog({ onClose }: { onClose: () => void }) {
+          order.push('mount');
+          return { close: onClose };
+        },
+      },
+      window: {
+        __dshPetDebug: {},
+        petBridge: {
+          setInputBusy: (busy: boolean) => order.push('busy:' + busy),
+          setInteractive: (active: boolean) => order.push('interactive:' + active),
+        },
+      },
+    });
+    const inactive = () => false;
+    const sprite = Object.assign(Object.create(PetSprite.prototype), {
+      todoOpen,
+      menuOpen: false,
+      chatOpen: false,
+      _inputBusy: todoOpen,
+      _interactive: todoOpen,
+      dragState: { active: false },
+      balanceClickable: inactive,
+      workClickable: inactive,
+      whisperClickable: inactive,
+      pet: { id: 'dog' },
+      hit: { getBoundingClientRect: () => ({ right: 20, top: 20 }) },
+      refreshPopupBounds: () => order.push('resize'),
+      syncInputRegions: () => order.push('regions'),
+    }) as { showChatFromMenu(): void; chatMount: { close(): void }; chatOpen: boolean; _interactive: boolean };
+    return { sprite, order };
+  }
+
+  test('先上报对话正在使用输入，再扩窗和挂载，挂载后同步可点区域', () => {
+    const { sprite, order } = chatFixture(false);
+    sprite.showChatFromMenu();
+    assert.deepEqual(order, ['regions', 'busy:true', 'resize', 'mount', 'regions', 'interactive:true']);
+  });
+
+  test('关对话时仍打开的待办保持可交互', () => {
+    const { sprite, order } = chatFixture(true);
+    sprite.showChatFromMenu();
+    order.length = 0;
+    sprite.chatMount.close();
+    assert.equal(sprite.chatOpen, false);
+    assert.equal(sprite._interactive, true);
+    assert.deepEqual(order, ['resize', 'regions']);
   });
 });

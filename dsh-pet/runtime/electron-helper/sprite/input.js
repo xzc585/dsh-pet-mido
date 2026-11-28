@@ -65,6 +65,7 @@ Object.assign(PetSprite.prototype, {
           score: S.clickScore(grabSpeed, this.size),
           speed: grabSpeed,
           size: this.size,
+          clamp: this.visibleClampRect() ?? undefined,
         });
       }
     }

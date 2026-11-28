@@ -28,8 +28,7 @@ Object.assign(PetSprite.prototype, {
     if (cursor) {
       const winX = this.pos.x - this.winOffset.x;
       const winY = this.pos.y - this.winOffset.y;
-      const winW = this.size + this.margin.l + this.margin.r;
-      const winH = this.winH + this.margin.t + this.margin.b;
+      const { width: winW, height: winH } = this.windowLayout;
       // 允许显示范围 = 窗口 ∩ 光标所在屏的工作区：只按窗口夹会画到屏幕外，只按工作区夹会落到
       // 窗口外（html/body 是 overflow:hidden，一样看不见）。
       const area = S.resolveRect(WORK_AREAS, cursor.x, cursor.y) ?? { x: winX, y: winY, width: winW, height: winH };

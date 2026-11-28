@@ -142,13 +142,12 @@ if (window.petBridge && window.petBridge.onDisplays) {
   });
 }
 
-// 窗口内容区尺寸异常时按当前位置重新规整。
-// 守卫：拖拽/飞行/漫游中绝不重设位置——这三种状态下位置由输入或物理驱动，而 position() 会把
-// 宠物拉回 customPos。跨屏时 Windows 会因 WM_DPICHANGED 主动改窗口尺寸，不设防就会看到宠物跳回上一个落点。
+// 原生窗口因 DPI 或操作面板改变大小时，按当前本体位置重新规整。
+// 拖拽、飞行、漫游的下一帧本身会更新窗口；静止时也保留当前位置，避免扩窗把宠物拉回上一个落点。
 window.addEventListener('resize', () => {
   for (const s of sprites) {
     if (s.dragState.active || s.throwRef !== null || s.moveRef !== null) continue;
-    s.position();
+    s.sendBounds(s.pos.x, s.pos.y);
   }
 });
 

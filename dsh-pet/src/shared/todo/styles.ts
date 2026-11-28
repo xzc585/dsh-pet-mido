@@ -1,16 +1,18 @@
 /**
  * 待办面板的样式：面板本体是气泡槽里的一个气泡，外框沿用气泡的白底圆角与尾巴。
  *
- * 只有静态字符串与注入状态，不建 DOM、不读配置；尺寸全部锚在气泡字号 --f 上，
- * 因此 config.font 的字号与 followPet、以及宠物尺寸改了，面板跟着等比缩放。
+ * 面板有独立的可读字号和宽度下限，用户放大的气泡字号仍可放大面板。
  * 高度预算 TODO_PANEL_METRICS 与这里的系数同源：改任何一条都必须同步，否则桌面窗口上边距会算少。
  * @module dsh-pet/src/shared/todo/styles
  */
 import { BUBBLE_OVERLAP_RATIO, resolveFontPx } from '../fonts.ts';
 import type { FontConfig } from '../types.ts';
 
-/** 面板根字号相对气泡字号的比例：默认配置（气泡 21.02px）下取整为 13px。 */
+/** 面板根字号相对气泡字号的比例。 */
 export const TODO_FONT_SCALE = 0.618;
+const TODO_MIN_FONT_PX = 14;
+const TODO_MIN_WIDTH_PX = 320;
+const TODO_WIDTH_SCALE = 14.65;
 
 /** 面板竖向预算（em，基准 = 面板根字号）：头部 + 表单 + 下半区，默认配置下约 329px。 */
 export const TODO_PANEL_METRICS = {
@@ -29,19 +31,21 @@ export const TODO_PANEL_METRICS = {
 /** 面板样式：头部 + 添加行 + 可滚动的清单 + 底部提示。 */
 export const TODO_CSS = [
   // 气泡变体：两端气泡的基础类不同（网页 .dsh-pet-bubble / 桌面 .pet-bubble），所以并列两条提高特异性，
-  // 不依赖注入顺序压过基础样式。宽度锚 --f（14.65 × 21.02 ≈ 308px），max() 给 220px 下限防止
-  // 小字号下输入框与按钮挤成一列，max-width 再把整体夹回视口。
+  // 不依赖注入顺序压过基础样式。宽度下限给输入和日历留出空间，窄视口优先限制整体宽度。
   '.dsh-pet-bubble.dsh-pet-todo-bubble,.pet-bubble.dsh-pet-todo-bubble{padding:0;',
-  'width:max(220px,calc(var(--f)*14.65));max-width:calc(100vw - 16px);pointer-events:auto;cursor:default}',
+  `width:max(${TODO_MIN_WIDTH_PX}px,calc(var(--f)*${TODO_WIDTH_SCALE}));`,
+  'max-width:calc(100vw - 16px);pointer-events:auto;cursor:default}',
   // 面板本体：只负责竖向排布，外框（底色/圆角/阴影/尾巴）全部交给气泡，圆角用 inherit 对齐。
   // 尺寸一律 em，基准是本行的 --t；自己改了 font-size 的元素内边距改用 calc(var(--t)*k)，
   // 否则 em 会按它自己的字号再缩一遍。
-  '.dsh-pet-todo{--t:calc(var(--f)*' + TODO_FONT_SCALE + ');display:flex;flex-direction:column;',
-  'box-sizing:border-box;border-radius:inherit;overflow:hidden;color:#2b2b2b;font-size:var(--t);',
+  `.dsh-pet-todo{--t:max(${TODO_MIN_FONT_PX}px,calc(var(--f)*${TODO_FONT_SCALE}));display:flex;flex-direction:column;`,
+  'box-sizing:border-box;border-radius:inherit;color:#2b2b2b;font-size:var(--t);',
+  'max-height:var(--dsh-pet-todo-max-height,none);overflow:hidden auto;overscroll-behavior:contain;',
   'line-height:1.5;user-select:none;',
   "font-family:var(--dsh-pet-font-family,'ShangshouSoftCandy','Yuanti SC','YouYuan','幼圆','Comic Sans MS','PingFang SC','Microsoft YaHei',sans-serif);",
   '}',
   '.dsh-pet-todo *{box-sizing:border-box}',
+  '.dsh-pet-todo>*{flex-shrink:0}',
   '.dsh-pet-todo-head{display:flex;align-items:center;gap:.615em;padding:.769em .923em .615em}',
   '.dsh-pet-todo-title{flex:1;font-size:1.077em;font-weight:600}',
   '.dsh-pet-todo-count{color:rgba(43,43,43,.55);font-size:.923em}',
@@ -164,8 +168,13 @@ export function injectTodoCss(): void {
 export function todoPanelTopMarginPx(font: FontConfig | undefined, size: number): number {
   const m = TODO_PANEL_METRICS;
   // 窗口余量按较高的那种状态算：面板高度会随状态变，但窗口尺寸不能跟着变。
-  const panelPx =
-    (m.head + m.form + Math.max(m.list + m.hint, m.calendar)) * resolveFontPx(font, size).bubble * TODO_FONT_SCALE;
+  const panelFont = Math.max(TODO_MIN_FONT_PX, resolveFontPx(font, size).bubble * TODO_FONT_SCALE);
+  const panelPx = (m.head + m.form + Math.max(m.list + m.hint, m.calendar)) * panelFont;
   const overlap = (Number(size) || 0) * BUBBLE_OVERLAP_RATIO;
   return Math.max(0, Math.ceil(panelPx - overlap));
+}
+
+/** 桌面窗口计算横向余量时，使用与待办面板 CSS 一致的期望宽度。 */
+export function todoPanelWidthPx(font: FontConfig | undefined, size: number): number {
+  return Math.ceil(Math.max(TODO_MIN_WIDTH_PX, resolveFontPx(font, size).bubble * TODO_WIDTH_SCALE));
 }

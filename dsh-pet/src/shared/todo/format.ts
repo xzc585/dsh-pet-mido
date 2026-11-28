@@ -125,6 +125,12 @@ export function formatDateTimeLocal(ms: number): string {
   );
 }
 
+/** 选择器提示和错误信息共用的本地绝对时间。 */
+export function absoluteDueLabel(ms: number, showSeconds = false): string {
+  const minute = formatDateTimeLocal(ms).replace('T', ' ');
+  return showSeconds ? `${minute}:${pad2(new Date(ms).getSeconds())}` : minute;
+}
+
 /**
  * 读 `datetime-local` 的值；空串表示「没有期限」。
  *

@@ -5,7 +5,7 @@
  * @module dsh-pet/src/shared/todo/panel
  */
 import { TODOS_PATH, addTodo, loadTodos, patchTodo, removeTodo, type TodoResult } from './api.ts';
-import { parseDateTimeLocal } from './format.ts';
+import { absoluteDueLabel, parseDateTimeLocal } from './format.ts';
 import { createTodoPanelParts, renderTodoList, setTodoBusy, setTodoError, type TodoListHandlers } from './render.ts';
 import { injectTodoCss } from './styles.ts';
 import type { TodoItem } from './types.ts';
@@ -95,8 +95,9 @@ export function createTodoPanel(options: TodoPanelOptions = {}): TodoPanel {
     // 先收起日历：错误行在清单那一侧，日历开着时会被折叠区藏起来，报错就看不见了。
     parts.duePicker.close();
     // 过去的时刻建出来就是逾期，提醒一上线就会喊，等于让用户先错一次再改。
-    if (dueAt !== null && dueAt < Date.now()) {
-      setTodoError(parts, '这个时间已经过去了，换一个吧');
+    const now = Date.now();
+    if (dueAt !== null && dueAt < now) {
+      setTodoError(parts, `所选时间 ${absoluteDueLabel(dueAt)} 已经过了。当前时间 ${absoluteDueLabel(now, true)}。`);
       return;
     }
     void mutate(async () => {

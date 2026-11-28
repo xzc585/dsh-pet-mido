@@ -208,7 +208,10 @@ Object.assign(PetSprite.prototype, {
     const ac = new AbortController();
     this.ac = ac;
     // 级联菜单新增面板、聊天输入增长都可能在鼠标停住时发生，不能只等下一次 mousemove。
-    this.inputRegionResize = new ResizeObserver(() => this.syncInputRegions());
+    this.inputRegionResize = new ResizeObserver(() => {
+      this.layoutTodoPopup();
+      this.syncInputRegions();
+    });
     this.inputRegionElements = new Set();
     this.inputRegionMutation = new MutationObserver(() => this.syncInputRegions());
     this.inputRegionMutation.observe(document.body, { childList: true, subtree: true });

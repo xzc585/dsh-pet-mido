@@ -11,7 +11,8 @@ export const SCORE_POPUP_DURATION_MS = 2200;
 
 /** 弹窗样式 —— 两端注入同一份。 */
 export const SCORE_POPUP_CSS = [
-  '.dsh-pet-score{position:fixed;z-index:2147483002;min-width:120px;text-align:center;',
+  '.dsh-pet-score{position:fixed;z-index:2147483002;box-sizing:border-box;text-align:center;',
+  'min-width:min(154px,var(--dsh-pet-score-max-width));max-width:var(--dsh-pet-score-max-width);',
   'background:rgba(255,255,255,.97);border:1px solid rgba(255,179,0,.35);border-radius:12px;',
   'box-shadow:0 10px 32px rgba(0,0,0,.22);padding:8px 16px 9px;user-select:none;pointer-events:auto;',
   // 字体族走全局配置变量（两端注入在 documentElement）：弹窗挂在 body 下，继承不到宠物根容器。
@@ -19,7 +20,7 @@ export const SCORE_POPUP_CSS = [
   "font-family:var(--dsh-pet-font-family,'ShangshouSoftCandy','Yuanti SC','YouYuan','幼圆','Comic Sans MS','PingFang SC','Microsoft YaHei',sans-serif);}",
   '.dsh-pet-score.is-in{animation:dshPetScorePop .28s ease}',
   '.dsh-pet-score-val{font-size:22px;line-height:1.25;font-weight:700;color:#ff8f00;font-variant-numeric:tabular-nums}',
-  '.dsh-pet-score-sub{font-size:11px;line-height:1.4;color:rgba(43,43,43,.6);margin-top:2px;white-space:nowrap}',
+  '.dsh-pet-score-sub{font-size:11px;line-height:1.4;color:rgba(43,43,43,.6);margin-top:2px;overflow-wrap:anywhere}',
   // 粒子层：整屏固定、不挡交互；粒子为绝对定位小圆点，位移与透明度由 rAF 直接写
   '.dsh-pet-score-burst{position:fixed;inset:0;pointer-events:none;z-index:2147483002}',
   '.dsh-pet-score-particle{position:absolute;border-radius:50%;pointer-events:none}',
@@ -125,15 +126,19 @@ export function mountScorePopup(opts: {
   score: number;
   speed: number;
   size: number;
+  /** 桌面窗口中实际落在工作区内的区域，使用视口坐标。 */
+  clamp?: { x: number; y: number; w: number; h: number };
   /** 关闭后的通知（调用方复位自身状态） */
   onClose?: () => void;
 }): ScorePopupMount {
   injectScoreCss();
   // 弹窗显示在点击点上方（避开手指/光标），超出视口夹回
-  const x = opts.x;
-  const y = opts.y;
+  const area = opts.clamp ?? { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
+  const padding = 4;
+  const maxWidth = Math.max(0, area.w - padding * 2);
   const root = document.createElement('div');
   root.className = 'dsh-pet-score';
+  root.style.setProperty('--dsh-pet-score-max-width', maxWidth + 'px');
 
   const val = document.createElement('div');
   val.className = 'dsh-pet-score-val';
@@ -147,8 +152,10 @@ export function mountScorePopup(opts: {
 
   // 定位（先量后定位；同 mountChatDialog）
   const rr = root.getBoundingClientRect();
-  root.style.left = Math.max(4, Math.min(x - rr.width / 2, window.innerWidth - rr.width - 4)) + 'px';
-  root.style.top = Math.max(4, y - rr.height - 14) + 'px';
+  root.style.left =
+    Math.max(area.x + padding, Math.min(opts.x - rr.width / 2, area.x + area.w - rr.width - padding)) + 'px';
+  root.style.top =
+    Math.max(area.y + padding, Math.min(opts.y - rr.height - 14, area.y + area.h - rr.height - padding)) + 'px';
   // 强制重排后再加动画类，保证入场动画可见
   void root.offsetWidth;
   root.classList.add('is-in');

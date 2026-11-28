@@ -8,7 +8,7 @@
  * @module dsh-pet/src/shared/todo/due-picker
  */
 import { monthCells } from './calendar.ts';
-import { dueLabel, formatDateTimeLocal } from './format.ts';
+import { absoluteDueLabel, dueLabel, formatDateTimeLocal } from './format.ts';
 
 /** 周一为一周首日，与国内日历习惯一致。 */
 const WEEK_HEAD = ['一', '二', '三', '四', '五', '六', '日'] as const;
@@ -16,7 +16,7 @@ const WEEK_HEAD = ['一', '二', '三', '四', '五', '六', '日'] as const;
 /** 分钟档位：与提醒的最短间隔一致，避免选出提醒策略分辨不出的时刻。 */
 const MINUTE_STEP = 5;
 
-/** 未选日期时的默认时分：早上九点，比零点更像个「该做事了」的时刻。 */
+/** 默认早上九点，选择今天且已过九点时改用之后的档位。 */
 const DEFAULT_HOUR = 9;
 
 /** 日历区的三种网格。 */
@@ -50,6 +50,8 @@ interface PickerState {
   picked: Date | null;
   hour: number;
   minute: number;
+  explicitTime: boolean;
+  rolledOver: boolean;
   /** 当前展示的月份（该月 1 号）。 */
   view: Date;
   /** 当前网格。 */
@@ -190,7 +192,11 @@ function renderNumbers(dom: PickerDom, state: PickerState): void {
 /** 同步按钮文案、时分标签与当前网格的标题。 */
 function syncPicker(dom: PickerDom, state: PickerState): void {
   const ms = dueMs(state);
-  dom.el.textContent = ms === null ? '无期限' : dueLabel(ms, Date.now());
+  const rolloverPrefix = state.rolledOver ? '已改为' : '';
+  const rolloverNotice = state.rolledOver ? '（原选日期已无可选时间）' : '';
+  dom.el.textContent = ms === null ? '无期限' : rolloverPrefix + dueLabel(ms, Date.now());
+  dom.el.title = ms === null ? '' : absoluteDueLabel(ms) + rolloverNotice;
+  dom.el.setAttribute('aria-label', ms === null ? '提醒时间（可选）' : '提醒时间 ' + dom.el.title);
   dom.el.classList.toggle('is-set', ms !== null);
   dom.hourChip.textContent = pad2(state.hour);
   dom.minuteChip.textContent = pad2(state.minute);
@@ -215,24 +221,51 @@ function renderPicker(dom: PickerDom, state: PickerState): void {
   syncPicker(dom, state);
 }
 
-/** 选中某一天：同步展示月份，并回到日期网格。 */
-function pickDay(dom: PickerDom, state: PickerState, date: Date): void {
+/** 选中日期。用户还没有手选时分时，确保今天的默认时间仍在未来。 */
+function pickDay(state: PickerState, date: Date): void {
+  state.rolledOver = false;
+  if (!state.explicitTime) {
+    const now = new Date();
+    const today = sameDay(date, now);
+    const hour = today && now.getHours() >= DEFAULT_HOUR ? Math.min(now.getHours() + 1, 23) : DEFAULT_HOUR;
+    // 23 点后优先取今天余下的五分钟档位；超过最后一档时 Date 会进位到次日零点。
+    const minute = today && now.getHours() === 23 ? (Math.floor(now.getMinutes() / MINUTE_STEP) + 1) * MINUTE_STEP : 0;
+    date = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute);
+    state.rolledOver = today && !sameDay(date, now);
+    state.hour = date.getHours();
+    state.minute = date.getMinutes();
+  }
   state.picked = date;
   state.view = new Date(date.getFullYear(), date.getMonth(), 1);
   state.mode = 'day';
-  renderPicker(dom, state);
+}
+
+function clearSelection(state: PickerState): void {
+  state.picked = null;
+  state.hour = DEFAULT_HOUR;
+  state.minute = 0;
+  state.explicitTime = false;
+  state.rolledOver = false;
+  state.mode = 'day';
 }
 
 /** 点日历里的按钮：翻月、切网格、今天、清除、完成，或选中某一天 / 某个数。 */
 function onCalendarClick(dom: PickerDom, state: PickerState, button: HTMLButtonElement, close: () => void): void {
   const { ts, num, act } = button.dataset;
   if (ts !== undefined) {
-    pickDay(dom, state, new Date(Number(ts)));
+    pickDay(state, new Date(Number(ts)));
+    renderPicker(dom, state);
     return;
   }
   if (num !== undefined) {
-    if (state.mode === 'hour') state.hour = Number(num);
+    const pickHour = state.mode === 'hour';
+    if (state.picked === null) {
+      state.explicitTime = pickHour;
+      pickDay(state, new Date());
+    }
+    if (pickHour) state.hour = Number(num);
     else state.minute = Number(num);
+    state.explicitTime = true;
     state.mode = 'day';
     renderPicker(dom, state);
     return;
@@ -249,11 +282,11 @@ function onCalendarClick(dom: PickerDom, state: PickerState, button: HTMLButtonE
     return;
   }
   if (act === 'today') {
-    const now = new Date();
-    pickDay(dom, state, new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+    pickDay(state, new Date());
+    renderPicker(dom, state);
     return;
   }
-  if (act === 'clear') state.picked = null;
+  if (act === 'clear') clearSelection(state);
   renderPicker(dom, state);
   // 收起必须走 close：它还要同步 aria 与面板的 is-picking（清单靠它重新露出来）。
   if (act === 'clear' || act === 'done') close();
@@ -271,6 +304,8 @@ export function createDuePicker(options: DuePickerOptions = {}): DuePicker {
     picked: null,
     hour: DEFAULT_HOUR,
     minute: 0,
+    explicitTime: false,
+    rolledOver: false,
     view: new Date(now.getFullYear(), now.getMonth(), 1),
     mode: 'day',
     open: false,
@@ -317,10 +352,7 @@ export function createDuePicker(options: DuePickerOptions = {}): DuePicker {
     },
     close: () => setOpen(false),
     reset: () => {
-      state.picked = null;
-      state.hour = DEFAULT_HOUR;
-      state.minute = 0;
-      state.mode = 'day';
+      clearSelection(state);
       renderPicker(dom, state);
       setOpen(false);
     },

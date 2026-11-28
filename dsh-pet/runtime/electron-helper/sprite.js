@@ -65,13 +65,12 @@ class PetSprite {
     // 左右透明边余量（视频盒内宠物身体居中）：让边界按身体贴边——宠物能走到屏幕边缘，但身体永不越界。
     this.sideAllow = (S.HIT_BOX.x0 / 640) * this.size;
     window.__dshPetDebug.sideAllow = this.sideAllow;
-    // 窗口四周外扩：左右下 = WINDOW_MARGIN_RATIO×宠物尺寸；上边距按气泡与待办面板的最大高度算——
-    // 两者都锚字号、窗口余量锚宠物，宠物变小或字号固定时半只宠物的余量装不下，顶端会被窗口上沿切掉。
-    // 余量透明且点击穿透，加高没有副作用；但它自此不再四边相等，所以命中区要由主进程按上报值算。
+    // 普通窗口只为气泡留出上边距；较大的操作面板打开时再扩窗。
+    // 余量可能不对称，命中区由主进程按实际上报的偏移算。
     const m = this.size * WINDOW_MARGIN_RATIO;
     const fontConf = pet.font || config.font || S.DEFAULT_FONT;
     this.margin = {
-      t: Math.max(m, S.bubbleTopMarginPx(fontConf, this.size), S.todoPanelTopMarginPx(fontConf, this.size)),
+      t: Math.max(m, S.bubbleTopMarginPx(fontConf, this.size)),
       r: m,
       b: m,
       l: m,
@@ -106,6 +105,7 @@ class PetSprite {
     this.inputRegionMutation.disconnect();
     this.inputRegionResize.disconnect();
     this.inputRegionElements.clear();
+    this.todoPanel?.dispose();
     if (this.bubbleTimer !== null) window.clearTimeout(this.bubbleTimer);
     if (this.whisperTimer !== null) window.clearTimeout(this.whisperTimer);
     if (this.workTimer !== null) window.clearTimeout(this.workTimer);
@@ -168,6 +168,10 @@ class PetSprite {
     this.pos = { x: Math.round(fit.x + fit.offsetX), y: Math.round(fit.y + fit.offsetY) };
     window.__dshPetDebug.dragPos = { x: this.pos.x, y: this.pos.y };
     this.reportWindow(fit);
+    if (this.todoOpen) {
+      this.layoutTodoPopup();
+      this.syncInputRegions();
+    }
     // 位置变了：提示跟的是光标，而光标存视口坐标，窗口一移就必须重摆，否则提示会跟着窗口漂走。
     // 只在显示时重摆（漫游逐帧调本函数，没显示提示时不做无谓的 DOM 写入）。
     if (this.tipOn) this.renderTip();
@@ -273,8 +277,7 @@ class PetSprite {
     if (!area) return null;
     const winX = this.pos.x + VIEW.x - this.winOffset.x;
     const winY = this.pos.y + VIEW.y - this.winOffset.y;
-    const winW = this.size + this.margin.l + this.margin.r;
-    const winH = this.winH + this.margin.t + this.margin.b;
+    const { width: winW, height: winH } = this.windowLayout;
     const ax = area.x + VIEW.x;
     const ay = area.y + VIEW.y;
     const vx0 = Math.max(ax, winX);

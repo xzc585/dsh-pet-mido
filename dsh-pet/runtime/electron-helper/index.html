@@ -133,6 +133,25 @@
         border-top-color: rgba(255, 255, 255, 0.92);
         border-bottom: none;
       }
+      #root .pet-bubble.dsh-pet-todo-bubble {
+        left: var(--desktop-todo-left, 0px);
+        top: var(--desktop-todo-top, 0px);
+        bottom: auto;
+        transform: none;
+        min-width: 0;
+        max-width: var(--desktop-todo-max-width, calc(100vw - 16px));
+      }
+      #root .pet-bubble.dsh-pet-todo-bubble::after {
+        left: var(--desktop-todo-tail-x, 50%);
+      }
+      #root .pet-bubble.dsh-pet-todo-bubble.is-below-pet::after {
+        top: calc(var(--f) * -0.3736);
+        bottom: auto;
+        transform: translateX(-50%) rotate(180deg);
+      }
+      #root .pet-bubble.dsh-pet-todo-bubble.is-over-pet::after {
+        display: none;
+      }
       .pet-bubble.is-on {
         opacity: 1;
       }
