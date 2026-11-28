@@ -3579,7 +3579,7 @@ components:
           type: number
         showUsage:
           type: boolean
-          description: 是否在设置中显示当前内存占用。新配置默认打开，更新时省略则保留已有设置。
+          description: 是否在桌面宠物旁和设置中显示当前内存占用。新配置默认打开，更新时省略则保留已有设置。
         notifyOnClean:
           type: boolean
           description: 是否在清理完成后显示 Windows 通知。新配置默认关闭，更新时省略则保留已有设置。

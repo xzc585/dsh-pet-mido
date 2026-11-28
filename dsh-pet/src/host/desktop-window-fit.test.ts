@@ -69,6 +69,7 @@ interface Sprite {
   menuOpen?: boolean;
   chatOpen?: boolean;
   todoOpen?: boolean;
+  memoryBadge?: object | null;
   fitWindow(): WindowFit;
   reportWindow(fit: WindowFit): void;
 }
@@ -183,6 +184,28 @@ describe('sprite/window-fit.js —— 窗口落位接线', () => {
     assert.ok(menu.width >= 490 && menu.height >= 380, '常见三级级联展开余量');
     assert.equal(menu.x + menu.offsetX, sprite.pos.x);
     assert.equal(menu.y + menu.offsetY, sprite.pos.y);
+  });
+
+  test('最小桌宠为内存读数提供透明空间，屏幕位置与命中盒保持一致', () => {
+    setWindowClampedToWorkArea(false);
+    const sprite = makeSprite();
+    Object.assign(sprite, {
+      size: 1,
+      halfW: 0.5,
+      height: 0.5625,
+      halfH: 0.28125,
+      winH: 0.609375,
+      margin: { l: 0.5, r: 0.5, t: 0.5, b: 0.5 },
+      pos: { x: 3, y: 3 },
+    });
+    const before = sprite.fitWindow();
+    sprite.memoryBadge = {};
+    const badge = sprite.fitWindow();
+    assert.ok(badge.width >= 200 && badge.height >= 80);
+    assert.equal(badge.x + badge.offsetX, sprite.pos.x);
+    assert.equal(badge.y + badge.offsetY, sprite.pos.y);
+    sprite.memoryBadge = null;
+    assert.deepEqual(sprite.fitWindow(), before);
   });
 
   test('上报主进程：一次捎带窗口矩形 + 本体盒 + 命中区偏移 → 参数次序即协议', () => {

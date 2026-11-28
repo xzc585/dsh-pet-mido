@@ -10,6 +10,8 @@
 const POPUP_EDGE_GAP = 8;
 const MENU_WINDOW_SIZE = { width: 620, height: 480 };
 const CHAT_WINDOW_SIZE = { width: 400, height: 440 };
+const MEMORY_BADGE_MIN_WIDTH = 224;
+const MEMORY_BADGE_VERTICAL_MARGIN = 40;
 
 Object.assign(PetSprite.prototype, {
   /**
@@ -45,6 +47,12 @@ Object.assign(PetSprite.prototype, {
     let width = baseWidth;
     let height = baseHeight;
     let insetY = this.margin.t;
+    if (this.memoryBadge) {
+      // Keep enough transparent room for a readable badge even on a tiny sprite at the screen edge.
+      width = Math.max(width, MEMORY_BADGE_MIN_WIDTH);
+      insetY = Math.max(insetY, MEMORY_BADGE_VERTICAL_MARGIN);
+      height = this.winH + insetY + Math.max(this.margin.b, MEMORY_BADGE_VERTICAL_MARGIN);
+    }
     if (this.menuOpen) {
       width = Math.max(width, MENU_WINDOW_SIZE.width);
       height = Math.max(height, MENU_WINDOW_SIZE.height);

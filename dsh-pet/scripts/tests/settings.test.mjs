@@ -179,6 +179,8 @@ test('memory settings: the display and notice switches save independently with l
   await usage.waitFor();
   const showUsage = page.getByRole('checkbox', { name: 'Show current memory usage' });
   const notify = page.getByRole('checkbox', { name: 'Notify me after cleanup' });
+  const usageHint = page.locator('.dsh-pet-cfg__toggle').filter({ has: showUsage }).locator('[data-tip]');
+  assert.match(await usageHint.getAttribute('data-tip'), /this settings card and beside the desktop pet/);
   assert.equal(await showUsage.isChecked(), true);
   assert.equal(await notify.isChecked(), false);
   await showUsage.uncheck();
@@ -217,7 +219,10 @@ test('memory settings: a cleanup at higher usage shows the measured readings and
   assert.match(await report.textContent(), /自动清理.*8 GB.*50%.*9 GB.*56\.3%/);
   assert.doesNotMatch(await report.textContent(), /降到/);
   assert.equal(await page.getByText(/当前占用/).count(), 0);
-  assert.equal(await page.getByRole('checkbox', { name: '显示当前内存占用' }).isChecked(), false);
+  const showUsage = page.getByRole('checkbox', { name: '显示当前内存占用' });
+  assert.equal(await showUsage.isChecked(), false);
+  const usageHint = page.locator('.dsh-pet-cfg__toggle').filter({ has: showUsage }).locator('[data-tip]');
+  assert.equal(await usageHint.getAttribute('data-tip'), '在设置卡和桌面米豆旁显示内存占用。');
 });
 
 test('memory settings: a rejected toggle restores the saved choice and live reading', async (t) => {

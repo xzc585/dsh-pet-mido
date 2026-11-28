@@ -359,7 +359,7 @@ export const en: Record<Key, string> = {
   systemMemoryElevatedHint:
     'Windows will ask for permission. If you decline, Clean up now can still trim working sets you have access to.',
   systemMemoryShowUsage: 'Show current memory usage',
-  systemMemoryShowUsageHint: 'Show this computer’s memory usage in this card.',
+  systemMemoryShowUsageHint: 'Show this computer’s memory usage in this settings card and beside the desktop pet.',
   systemMemoryNotifyOnClean: 'Notify me after cleanup',
   systemMemoryNotifyOnCleanHint:
     'Show a Windows notification after a successful cleanup, even when settings are closed.',

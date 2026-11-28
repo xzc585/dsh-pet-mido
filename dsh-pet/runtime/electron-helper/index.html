@@ -61,6 +61,32 @@
       video.pet-video.is-front {
         opacity: 1;
       }
+      .pet-memory-usage {
+        position: absolute;
+        z-index: 2;
+        width: max-content;
+        padding: 2px 8px;
+        border: 1px solid rgba(34, 47, 67, 0.14);
+        border-radius: 999px;
+        background: #f7f9fc;
+        box-shadow: 0 2px 6px rgba(24, 31, 44, 0.2);
+        color: #27364a;
+        font:
+          600 13px/16px 'Microsoft YaHei UI',
+          'Segoe UI',
+          sans-serif;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        pointer-events: none;
+        visibility: hidden;
+      }
+      .pet-memory-usage.is-placed {
+        visibility: visible;
+      }
+      .pet-sprite:has(> .pet-bubble.is-on, > .pet-bubble.is-popping, .pet-hit.dragging) > .pet-memory-usage,
+      body:has(.dsh-pet-menu, .dsh-pet-chat, .dsh-pet-score) .pet-memory-usage {
+        visibility: hidden;
+      }
       .pet-hit {
         position: absolute;
         pointer-events: auto;
@@ -459,6 +485,7 @@
     <script src="./sprite/input.js"></script>
     <script src="./sprite/bubble.js"></script>
     <script src="./sprite/menu.js"></script>
+    <script src="./system-memory.js"></script>
     <script src="./events.js"></script>
     <script src="./renderer.js"></script>
   </body>

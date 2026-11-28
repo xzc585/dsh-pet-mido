@@ -552,4 +552,5 @@ function startLoops() {
     setTimeout(() => void stateLoop(), hit && stateLongPoll ? 0 : 1000);
   };
   void stateLoop();
+  startSystemMemoryPolling();
 }

@@ -105,6 +105,8 @@ const scriptGlobals = {
   OPEN_SHORTCUT_HINT: 'readonly',
   isOpenShortcut: 'readonly',
   playClickSound: 'readonly',
+  // system-memory.js
+  startSystemMemoryPolling: 'readonly',
   // events.js
   startLoops: 'readonly',
 };

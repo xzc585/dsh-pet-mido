@@ -325,7 +325,7 @@ export const zh = {
   systemMemoryElevated: '以管理员身份完整清理一次',
   systemMemoryElevatedHint: '会弹出系统的权限确认。拒绝后仍可用「立即清理」收缩有权限的工作集。',
   systemMemoryShowUsage: '显示当前内存占用',
-  systemMemoryShowUsageHint: '在此卡片显示整机内存用量。',
+  systemMemoryShowUsageHint: '在设置卡和桌面米豆旁显示内存占用。',
   systemMemoryNotifyOnClean: '清理完成后通知',
   systemMemoryNotifyOnCleanHint: '系统内存清理成功后会显示 Windows 通知，关闭设置页也能收到。',
   systemMemoryLastCleanHeading: '上次清理',

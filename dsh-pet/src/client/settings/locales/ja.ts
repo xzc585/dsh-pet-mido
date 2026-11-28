@@ -355,7 +355,7 @@ export const ja: Record<Key, string> = {
   systemMemoryElevatedHint:
     'Windows が許可を求めます。拒否しても「今すぐ整理」で権限のあるワーキングセットは縮小できます。',
   systemMemoryShowUsage: '現在のメモリー使用量を表示',
-  systemMemoryShowUsageHint: 'このカードにパソコン全体のメモリー使用量を表示します。',
+  systemMemoryShowUsageHint: 'この設定カードとデスクトップペットの横に、パソコン全体のメモリー使用量を表示します。',
   systemMemoryNotifyOnClean: '整理の完了を通知',
   systemMemoryNotifyOnCleanHint: 'システムメモリーの整理が完了すると、設定画面を閉じていても Windows 通知が届きます。',
   systemMemoryLastCleanHeading: '前回の整理',

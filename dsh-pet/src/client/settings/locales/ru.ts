@@ -362,7 +362,8 @@ export const ru: Record<Key, string> = {
   systemMemoryElevatedHint:
     'Windows запросит разрешение. Если отказаться, «Очистить сейчас» всё равно сможет сократить доступные рабочие наборы.',
   systemMemoryShowUsage: 'Показывать текущее использование памяти',
-  systemMemoryShowUsageHint: 'Показывает использование памяти компьютера в этой карточке.',
+  systemMemoryShowUsageHint:
+    'Показывает использование памяти компьютера в этой карточке настроек и рядом с питомцем на рабочем столе.',
   systemMemoryNotifyOnClean: 'Уведомлять после очистки',
   systemMemoryNotifyOnCleanHint: 'После успешной очистки появится уведомление Windows, даже если настройки закрыты.',
   systemMemoryLastCleanHeading: 'Последняя очистка',

@@ -369,7 +369,8 @@ export const fr: Record<Key, string> = {
   systemMemoryElevatedHint:
     'Windows demandera l’autorisation. En cas de refus, « Nettoyer maintenant » peut encore réduire les ensembles de travail auxquels vous avez accès.',
   systemMemoryShowUsage: 'Afficher l’utilisation actuelle de la mémoire',
-  systemMemoryShowUsageHint: 'Affiche l’utilisation de la mémoire de cet ordinateur dans cette carte.',
+  systemMemoryShowUsageHint:
+    'Affiche l’utilisation de la mémoire de cet ordinateur dans cette carte de réglages et à côté de l’animal de bureau.',
   systemMemoryNotifyOnClean: 'Me prévenir après le nettoyage',
   systemMemoryNotifyOnCleanHint:
     'Affiche une notification Windows après un nettoyage réussi, même si les réglages sont fermés.',

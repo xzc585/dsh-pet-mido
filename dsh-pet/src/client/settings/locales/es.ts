@@ -368,7 +368,8 @@ export const es: Record<Key, string> = {
   systemMemoryElevatedHint:
     'Windows pedirá permiso. Si lo rechazas, «Limpiar ahora» seguirá pudiendo reducir los conjuntos de trabajo a los que tengas acceso.',
   systemMemoryShowUsage: 'Mostrar el uso actual de memoria',
-  systemMemoryShowUsageHint: 'Muestra el uso de memoria del equipo en esta tarjeta.',
+  systemMemoryShowUsageHint:
+    'Muestra el uso de memoria del equipo en esta tarjeta de ajustes y junto a la mascota de escritorio.',
   systemMemoryNotifyOnClean: 'Avisarme al terminar la limpieza',
   systemMemoryNotifyOnCleanHint:
     'Muestra una notificación de Windows tras una limpieza correcta, aunque los ajustes estén cerrados.',

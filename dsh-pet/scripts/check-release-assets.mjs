@@ -13,7 +13,12 @@ const dog = 'assets/pet-packs/dog';
 const dogConfig = `${dog}/dog-config.json`;
 const helper = 'tools/mido-ram-cleaner.exe';
 const format = process.argv[2];
-const desktopFiles = ['lib/app.js', 'runtime/electron-helper/shared-core.js', 'assets/config.jsonc'];
+const desktopFiles = [
+  'lib/app.js',
+  'runtime/electron-helper/shared-core.js',
+  'runtime/electron-helper/system-memory.js',
+  'assets/config.jsonc',
+];
 
 function requireFiles(hasFile, names) {
   const missing = names.filter((name) => !hasFile(name));

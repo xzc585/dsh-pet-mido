@@ -198,7 +198,7 @@ function systemMemoryCard() {
     usage,
     last,
     systemMemoryToggle(autoBox, '启用自动清理', '按定时间隔或占用阈值清理。手动清理始终可以使用。'),
-    systemMemoryToggle(usageBox, '显示当前内存占用', '在此卡片显示使用率、已用内存和可用内存。'),
+    systemMemoryToggle(usageBox, '显示当前内存占用', '在设置卡和桌面米豆旁显示内存占用。'),
     systemMemoryToggle(notifyBox, '清理完成后通知', '由 Windows 系统通知报告清理结果，设置页关闭时也适用。'),
     fieldRow('g-sysmem-interval', '定时间隔（秒）', interval, '从上次清理或帮手启动起算。到点就清一次；若占用先达到阈值，会提前清理。须在 30 到 86400 秒之间。'),
     fieldRow('g-sysmem-threshold', '占用阈值（%）', threshold, '已用物理内存达到该百分比就提前清理。须在 50% 到 99% 之间。'),

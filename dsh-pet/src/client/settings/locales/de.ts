@@ -362,7 +362,8 @@ export const de: Record<Key, string> = {
   systemMemoryElevatedHint:
     'Windows fragt nach einer Freigabe. Lehnst du ab, kann „Jetzt bereinigen“ weiterhin erreichbare Working Sets verkleinern.',
   systemMemoryShowUsage: 'Aktuelle Speichernutzung anzeigen',
-  systemMemoryShowUsageHint: 'Zeigt die Speichernutzung des Computers in dieser Karte an.',
+  systemMemoryShowUsageHint:
+    'Zeigt die Speichernutzung des Computers in dieser Einstellungskarte und neben dem Desktop-Haustier an.',
   systemMemoryNotifyOnClean: 'Nach der Bereinigung benachrichtigen',
   systemMemoryNotifyOnCleanHint:
     'Zeigt nach erfolgreicher Bereinigung eine Windows-Benachrichtigung an, auch bei geschlossenen Einstellungen.',

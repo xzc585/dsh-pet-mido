@@ -70,6 +70,7 @@ test('旧配置用开关默认值，两个开关独立立即保存', async (t) =
   const notify = page.getByRole('checkbox', { name: /清理完成后通知/ });
   const usage = page.getByText(/62\.5%.*已用 10 GB.*可用 6 GB/);
   await usage.waitFor();
+  await page.getByText('在设置卡和桌面米豆旁显示内存占用。', { exact: true }).waitFor();
   assert.equal(await showUsage.isChecked(), true);
   assert.equal(await notify.isChecked(), false);
   await showUsage.uncheck();

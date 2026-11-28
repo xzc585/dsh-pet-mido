@@ -168,6 +168,7 @@ class PetSprite {
     this.pos = { x: Math.round(fit.x + fit.offsetX), y: Math.round(fit.y + fit.offsetY) };
     window.__dshPetDebug.dragPos = { x: this.pos.x, y: this.pos.y };
     this.reportWindow(fit);
+    if (this.memoryBadge) this.layoutMemoryUsage();
     if (this.todoOpen) {
       this.layoutTodoPopup();
       this.syncInputRegions();
